@@ -1,0 +1,39 @@
+---
+title: "Error Codes"
+description: "Standard error codes and response format for the Opencharge protocol"
+---
+
+## Error Code Reference
+
+| Code                       | HTTP | Description                                 |
+| -------------------------- | ---- | ------------------------------------------- |
+| `INVALID_SIGNATURE`        | 401  | Signature verification failed               |
+| `TIMESTAMP_EXPIRED`        | 401  | Timestamp outside ±5 minute window          |
+| `NONCE_REUSED`             | 401  | Nonce already seen (replay attempt)         |
+| `UNKNOWN_OCID`             | 401  | OCID not found in registry                  |
+| `METADATA_UNAVAILABLE`     | 502  | Could not fetch sender's metadata           |
+| `INVALID_PROOF`            | 400  | Proof structure is malformed                |
+| `PROOF_SIGNATURE_INVALID`  | 400  | Proof signature verification failed         |
+| `ISSUER_NOT_ACCEPTED`      | 400  | Proof issuer not in settlement.accepts      |
+| `AMOUNT_MISMATCH`          | 400  | Proof amount doesn't match transaction      |
+| `CURRENCY_MISMATCH`        | 400  | Proof currency doesn't match transaction    |
+| `TXID_NOT_FOUND`           | 404  | Referenced transaction doesn't exist        |
+| `TRANSACTION_EXPIRED`      | 410  | Settlement window has closed                |
+| `INSUFFICIENT_FUNDS`       | 402  | Sender has insufficient balance             |
+| `CAPABILITY_NOT_SUPPORTED` | 400  | Service doesn't support requested operation |
+| `RATE_LIMITED`             | 429  | Too many requests                           |
+
+## Error Response Format
+
+```json
+{
+  "error": {
+    "code": "ISSUER_NOT_ACCEPTED",
+    "message": "Proof issuer OCID 999 is not in accepted settlement sources",
+    "details": {
+      "providedIssuer": 999,
+      "acceptedIssuers": [100, 101, 102]
+    }
+  }
+}
+```

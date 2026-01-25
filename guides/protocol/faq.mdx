@@ -1,0 +1,216 @@
+---
+title: "FAQ"
+description: "Frequently asked questions about the Opencharge protocol"
+---
+
+## Identity & Registration
+
+**Q: Why use an NFT for identity?**
+
+The NFT provides:
+
+- **Permissionless registration**: Anyone can mint without approval
+- **Ownership transfer**: Identity can be sold or transferred
+- **On-chain record**: Tamper-proof registry of all OCIDs
+- **Wallet compatibility**: Standard ERC-721, works with existing tools
+
+**Q: Why not put the public key on-chain?**
+
+Storing the public key in mutable metadata (via URL) allows key rotation without gas costs. If we stored keys on-chain, every rotation would require a transaction.
+
+**Q: Can I have different keys for different endpoints?**
+
+Currently, one OCID = one key pair. If you need isolated keys, register multiple OCIDs. Future versions may support delegated signing keys.
+
+---
+
+## Merchants
+
+**Q: How do merchants accept payments via Opencharge?**
+
+Merchants register their own OCID. This OCID becomes their universal payment address:
+
+1. Merchant registers OCID (e.g., OCID 500)
+2. Merchant hosts metadata with their public key and accepted settlement sources
+3. Merchant shares OCID with payment services they want to accept (PayPal, Stripe, etc.)
+4. Payment service onboards merchant by OCID—no API keys needed
+5. Merchant can display OCID as QR code for in-person payments
+
+```
+┌─────────────────────────────────┐
+│                                 │
+│  ██████████████  ██████████████ │
+│  ██          ██  ██          ██ │
+│  ██  ██████  ██  ██  ██████  ██ │
+│  ██  ██████  ██  ██  ██████  ██ │
+│  ██          ██  ██          ██ │
+│  ██████████████  ██████████████ │
+│                                 │
+│        OCID: 500                │
+│    "Joe's Coffee Shop"          │
+│                                 │
+└─────────────────────────────────┘
+```
+
+Customer scans QR → their wallet fetches merchant's metadata → sees accepted settlement channels → initiates payment through a supported channel.
+
+**Q: What's in a merchant's metadata?**
+
+```json
+{
+  "opencharge": "0.1",
+  "name": "Joe's Coffee Shop",
+  "description": "Coffee and pastries in Kampala",
+  "icon": "https://joescoffee.ug/logo.png",
+  "publicKey": "a34b5c6d...",
+  "endpoint": "https://api.joescoffee.ug/opencharge",
+  "capabilities": ["payment.receive"],
+  "settlement": {
+    "currencies": ["UGX", "USD"],
+    "accepts": [
+      { "ocid": 300, "name": "MTN Mobile Money" },
+      { "ocid": 301, "name": "Airtel Money" },
+      { "ocid": 100, "name": "Barclays Bank Uganda" }
+    ]
+  }
+}
+```
+
+**Q: How does onboarding work without API keys?**
+
+Traditional flow:
+
+```
+1. Merchant signs up on PayPal
+2. PayPal generates API credentials
+3. Merchant integrates credentials into their system
+4. Credentials are PayPal-specific
+```
+
+Opencharge flow:
+
+```
+1. Merchant registers OCID once
+2. Merchant tells PayPal: "My OCID is 500"
+3. PayPal verifies merchant owns OCID (signed challenge)
+4. PayPal approves OCID for payments
+5. Same OCID works with Stripe, Square, anyone
+```
+
+The merchant's OCID and key pair replace per-service API credentials. One identity, universal acceptance.
+
+**Q: Does every merchant need an OCID?**
+
+No. The protocol doesn't force this structure. Services have flexibility:
+
+| Approach               | Description                                                 | Use Case                                     |
+| ---------------------- | ----------------------------------------------------------- | -------------------------------------------- |
+| **Merchant OCID**      | Merchant registers own OCID                                 | Businesses wanting universal payment address |
+| **Provider reference** | Provider uses internal reference (phone number, account ID) | Existing customers, minimal friction         |
+| **Hybrid**             | Provider offers OCID registration as optional upgrade       | Gradual adoption                             |
+
+For example, MTN MOMO can continue using phone numbers for most merchants:
+
+```json
+{ "recipient": "+256701234567", "amount": "10000.00" }
+```
+
+But merchants who want cross-platform interoperability can register an OCID and link it to their MOMO account. MTN maps OCID → phone number internally.
+
+**Q: What's the benefit for merchants?**
+
+- **One identity**: Same OCID works across all payment services
+- **No API key management**: No credentials to rotate per provider
+- **QR payments**: Print OCID, accept payments from any compatible wallet
+- **Portable**: Switch providers without changing payment address
+- **Verifiable**: Customers can verify they're paying the right merchant
+
+---
+
+## Settlement & Trust
+
+**Q: What if someone doesn't accept my settlement proof?**
+
+If MTN doesn't accept proofs from your chosen settlement provider, you need to find another path. Check MTN's `settlement.accepts` list and find a provider you both work with. The protocol doesn't solve business relationships—it makes existing relationships more efficient.
+
+**Q: Can PayPal route through multiple hops?**
+
+Yes, but that's PayPal's internal concern. If PayPal doesn't have direct access to any of MTN's accepted sources, PayPal might:
+
+1. Transfer to Wise (who has Barclays access)
+2. Wise transfers to Barclays
+3. Barclays credits MTN
+4. PayPal presents Barclays' proof to MTN
+
+MTN only sees and cares about the final hop (Barclays → MTN).
+
+**Q: What about disputes?**
+
+Out of scope. A valid signature from an accepted issuer means that issuer attests to completing the transfer. If there's a dispute (e.g., MTN claims Barclays' proof is valid but funds never arrived), that's between MTN and Barclays—a business relationship that exists independently of this protocol.
+
+---
+
+## Technical
+
+**Q: How is this different from blockchain?**
+
+| Aspect    | Blockchain           | Opencharge                    |
+| --------- | -------------------- | ----------------------------- |
+| Ledger    | Public, global       | Private, per-party            |
+| Consensus | Network-wide         | Bilateral (signer + verifier) |
+| Finality  | Block confirmation   | Signature verification        |
+| Privacy   | Pseudonymous at best | Fully private                 |
+| Speed     | Block time           | Instant                       |
+| Cost      | Gas fees             | Free (except registration)    |
+
+Opencharge gives you blockchain-style cryptographic receipts without the public ledger.
+
+**Q: Why not just use traditional APIs with OAuth?**
+
+Traditional API authentication:
+
+- Requires bilateral key exchange per service
+- Different credentials per integration
+- No portable proof of payment
+- Credentials tied to specific provider
+
+Opencharge:
+
+- One identity works everywhere
+- No pre-shared secrets needed
+- Proofs are portable and verifiable by third parties
+- Self-sovereign identity
+
+**Q: What happens if my metadata URL goes down?**
+
+Other services won't be able to verify your signatures until it's back. Recommendations:
+
+- Use highly available hosting (CDN, multiple regions)
+- Implement caching on the verifier side
+- Consider backup metadata URLs (future protocol extension)
+
+**Q: How do QR code payments work?**
+
+```
+1. Customer scans merchant's QR code (contains OCID)
+2. Customer's wallet fetches merchant metadata from registry
+3. Wallet server verifies settlement paths for compartibility and picks one eg barclays.
+4. Wallet displays: "Pay Joe's Coffee Shop 40$"
+5. Wallet shows settlement options based on its collection methods
+6. Customer selects payment method (e.g., "Pay via Card")
+7. Wallet collects the payment via visa card.
+6. Wallet server initiates payment flow with selected settlement path say via barclays.
+7. Settlement completes, merchant receives proof
+```
+
+The QR code can be as simple as:
+
+```
+opencharge:500
+```
+
+Or include amount for specific transactions:
+
+```
+opencharge:500?amount=15000&currency=UGX&ref=order-123
+```

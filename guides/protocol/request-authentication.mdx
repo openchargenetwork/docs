@@ -1,0 +1,129 @@
+---
+title: "Request Authentication"
+description: "How to sign and verify Opencharge requests using secp256k1 ECDSA signatures"
+---
+
+## Signatures
+
+### Algorithm
+
+All signatures use **secp256k1 ECDSA** over **SHA-256**.
+
+```
+hash = SHA256(message)
+signature = secp256k1_sign(privateKey, hash)
+```
+
+### Public Key Format
+
+128-character hex string representing the uncompressed secp256k1 public key (64 bytes), **without** the 04 prefix:
+
+```
+publicKey = x_coordinate (32 bytes / 64 hex) + y_coordinate (32 bytes / 64 hex)
+```
+
+### Signature Format
+
+130-character hex string:
+
+```
+signature = r (64 hex) + s (64 hex) + v (2 hex)
+
+Where v = "1b" (27) or "1c" (28) for recovery ID
+```
+
+---
+
+## HTTP API
+
+### Request Headers
+
+All authenticated requests MUST include:
+
+| Header           | Description               | Example       |
+| ---------------- | ------------------------- | ------------- |
+| `X-OC-ID`        | Sender's OCID             | `200`         |
+| `X-OC-Timestamp` | Unix timestamp (seconds)  | `1706500000`  |
+| `X-OC-Nonce`     | Unique request identifier | `req_abc123`  |
+| `X-OC-Signature` | Request signature         | `a1b2c3...1b` |
+
+### Request Signature
+
+**Canonical format:**
+
+```
+ocid
+timestamp
+nonce
+method
+path
+body_hash
+```
+
+Where:
+
+- `ocid`: Sender's OCID as decimal string
+- `timestamp`: Unix seconds as decimal string
+- `nonce`: Unique request ID (for replay protection)
+- `method`: HTTP method, uppercase
+- `path`: Full path including query string
+- `body_hash`: SHA-256 of request body (hex), or SHA-256 of empty string if no body
+
+**Example:**
+
+```
+200
+1706500000
+req_abc123
+POST
+/opencharge/payment/request
+7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730
+```
+
+Sign: `secp256k1_sign(privateKey, SHA256(canonical))`
+
+### Response Headers
+
+Responses SHOULD include authentication:
+
+| Header           | Description        |
+| ---------------- | ------------------ |
+| `X-OC-ID`        | Responder's OCID   |
+| `X-OC-Timestamp` | Response timestamp |
+| `X-OC-Signature` | Response signature |
+
+**Canonical response format:**
+
+```
+ocid
+timestamp
+status_code
+body_hash
+```
+
+### Validation Rules
+
+**Timestamp**: Accept within ±300 seconds (5 minutes) of server time.
+
+**Nonce**: Track seen nonces to prevent replay attacks. Nonces only need to be unique within the timestamp window.
+
+### Example Request
+
+```http
+POST /opencharge/payment/request HTTP/1.1
+Host: api.mtn.co.ug
+Content-Type: application/json
+X-OC-ID: 200
+X-OC-Timestamp: 1706500000
+X-OC-Nonce: req_abc123
+X-OC-Signature: a1b2c3d4...7f1b
+
+{
+  "recipient": "+256701234567",
+  "amount": "10000.00",
+  "currency": "UGX",
+  "reference": "ORD-2024-001",
+  "memo": "Payment for electronics",
+  "expiresAt": 1706503600
+}
+```

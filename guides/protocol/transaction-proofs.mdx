@@ -1,0 +1,65 @@
+---
+title: "Transaction Proofs"
+description: "Structure and verification of cryptographic transaction proofs in Opencharge"
+---
+
+## Purpose
+
+A transaction proof is a signed receipt attesting that a transfer was completed. It's the cryptographic evidence that enables trustless settlement.
+
+## Proof Structure
+
+```json
+{
+  "proof": {
+    "txid": "barclays_tx_456",
+    "issuer": 100,
+    "from": 200,
+    "to": 300,
+    "amount": "10000.00",
+    "currency": "UGX",
+    "timestamp": 1706500500,
+    "memo": "Settlement for ORD-2024-001"
+  },
+  "signature": "a1b2c3d4e5f6...7f1b"
+}
+```
+
+### Proof Fields
+
+| Field       | Type   | Required | Description                                |
+| ----------- | ------ | -------- | ------------------------------------------ |
+| `txid`      | string | Yes      | Unique transaction ID from issuer          |
+| `issuer`    | number | Yes      | OCID of service that executed the transfer |
+| `from`      | number | Yes      | OCID of sender                             |
+| `to`        | number | Yes      | OCID of recipient                          |
+| `amount`    | string | Yes      | Amount as decimal string                   |
+| `currency`  | string | Yes      | ISO 4217 currency code                     |
+| `timestamp` | number | Yes      | Unix timestamp when transfer completed     |
+| `memo`      | string | No       | Human-readable description                 |
+
+## Proof Signature
+
+The signature is over the canonical JSON of the `proof` object:
+
+```javascript
+canonical = canonicalize(proof)  // Sorted keys, no whitespace
+hash = SHA256(canonical)
+signature = secp256k1_sign(issuer_private_key, hash)
+```
+
+**Canonicalization**: Keys sorted alphabetically at all levels, no whitespace, minimal escaping.
+
+## Verifying a Proof
+
+```
+1. Extract issuer OCID from proof
+2. Fetch issuer's metadata from Router Registry
+3. Extract publicKey from metadata
+4. Canonicalize the proof object
+5. Compute SHA256(canonical)
+6. Verify signature against public key
+7. Confirm issuer is in your settlement.accepts list
+8. Confirm amount and currency match expected values
+9. Store txid to prevent replay
+```

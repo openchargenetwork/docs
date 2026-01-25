@@ -1,0 +1,407 @@
+---
+title: "Implementation Guide"
+description: "Checklists, reference implementations, and test vectors for building Opencharge services"
+---
+
+## Implementation Checklist
+
+### Payment Services (PayPal, Stripe, etc.)
+
+- Register OCID(s) on Router Registry
+- Host metadata JSON at stable HTTPS URL
+- Generate and secure secp256k1 key pair
+- Implement request signing (outbound)
+- Implement request verification (inbound)
+- Implement proof verification
+- Build settlement routing logic
+- Store proofs for audit trail
+- Handle key rotation
+
+### Settlement Providers (Banks, etc.)
+
+- Register OCID
+- Host metadata JSON
+- Implement `/transfer` endpoint
+- Generate signed proofs for all transfers
+- Implement `/verify` endpoint (recommended)
+- Map OCIDs to internal account references
+- Maintain proof archive
+
+### Payment Receivers (MTN MOMO, etc.)
+
+- Register OCID
+- Host metadata with `settlement.accepts` list
+- Implement `/payment/request` endpoint
+- Implement `/payment/settle` endpoint
+- Verify proofs from accepted issuers
+- Issue proofs to payers upon completion
+- Track pending transactions with expiry
+
+---
+
+## Reference Implementation
+
+### JavaScript SDK
+
+```javascript
+const crypto = require('crypto');
+const secp256k1 = require('secp256k1');
+
+/**
+ * Opencharge Client - Sign requests and proofs
+ */
+class OpenchargeClient {
+  constructor(ocid, privateKeyHex) {
+    this.ocid = ocid;
+    this.privateKey = Buffer.from(privateKeyHex, 'hex');
+  }
+
+  /**
+   * Generate headers for an authenticated request
+   */
+  signRequest(method, path, body = null) {
+    const timestamp = Math.floor(Date.now() / 1000);
+    const nonce = `req_${crypto.randomBytes(16).toString('hex')}`;
+    const bodyStr = body ? JSON.stringify(body) : '';
+    const bodyHash = sha256(bodyStr);
+
+    const canonical = [
+      String(this.ocid),
+      String(timestamp),
+      nonce,
+      method.toUpperCase(),
+      path,
+      bodyHash
+    ].join('\n');
+
+    const signature = this.sign(canonical);
+
+    return {
+      'X-OC-ID': String(this.ocid),
+      'X-OC-Timestamp': String(timestamp),
+      'X-OC-Nonce': nonce,
+      'X-OC-Signature': signature
+    };
+  }
+
+  /**
+   * Create a signed transaction proof
+   */
+  createProof({ txid, from, to, amount, currency, memo }) {
+    const proof = {
+      txid,
+      issuer: this.ocid,
+      from,
+      to,
+      amount,
+      currency,
+      timestamp: Math.floor(Date.now() / 1000)
+    };
+
+    if (memo) proof.memo = memo;
+
+    const signature = this.sign(canonicalize(proof));
+
+    return { proof, signature };
+  }
+
+  /**
+   * Sign a message
+   */
+  sign(message) {
+    const hash = Buffer.from(sha256(message), 'hex');
+    const { signature, recid } = secp256k1.ecdsaSign(hash, this.privateKey);
+    return Buffer.from(signature).toString('hex') + (recid === 0 ? '1b' : '1c');
+  }
+}
+
+/**
+ * Opencharge Verifier - Verify requests and proofs
+ */
+class OpenchargeVerifier {
+  constructor(registryContract) {
+    this.registry = registryContract;
+    this.metadataCache = new Map();
+    this.seenNonces = new Map();
+    this.processedProofs = new Set();
+  }
+
+  /**
+   * Verify an incoming request
+   */
+  async verifyRequest(request) {
+    const ocid = parseInt(request.headers['x-oc-id']);
+    const timestamp = parseInt(request.headers['x-oc-timestamp']);
+    const nonce = request.headers['x-oc-nonce'];
+    const signature = request.headers['x-oc-signature'];
+
+    // Check timestamp (±5 minutes)
+    const now = Math.floor(Date.now() / 1000);
+    if (Math.abs(now - timestamp) > 300) {
+      throw new Error('TIMESTAMP_EXPIRED');
+    }
+
+    // Check nonce
+    const nonceKey = `${ocid}:${nonce}`;
+    if (this.seenNonces.has(nonceKey)) {
+      throw new Error('NONCE_REUSED');
+    }
+    this.seenNonces.set(nonceKey, timestamp);
+    this.cleanOldNonces();
+
+    // Get public key
+    const metadata = await this.getMetadata(ocid);
+    const publicKey = Buffer.from('04' + metadata.publicKey, 'hex');
+
+    // Reconstruct and verify
+    const bodyHash = sha256(request.body ? JSON.stringify(request.body) : '');
+    const canonical = [
+      String(ocid),
+      String(timestamp),
+      nonce,
+      request.method,
+      request.path,
+      bodyHash
+    ].join('\n');
+
+    if (!this.verify(canonical, signature, publicKey)) {
+      throw new Error('INVALID_SIGNATURE');
+    }
+
+    return { ocid, metadata };
+  }
+
+  /**
+   * Verify a transaction proof
+   */
+  async verifyProof(proofEnvelope, acceptedOcids) {
+    const { proof, signature } = proofEnvelope;
+
+    // Check not already processed
+    if (this.processedProofs.has(proof.txid)) {
+      throw new Error('PROOF_ALREADY_PROCESSED');
+    }
+
+    // Check issuer is accepted
+    if (!acceptedOcids.includes(proof.issuer)) {
+      throw new Error('ISSUER_NOT_ACCEPTED');
+    }
+
+    // Get issuer's public key
+    const metadata = await this.getMetadata(proof.issuer);
+    const publicKey = Buffer.from('04' + metadata.publicKey, 'hex');
+
+    // Verify signature
+    if (!this.verify(canonicalize(proof), signature, publicKey)) {
+      throw new Error('PROOF_SIGNATURE_INVALID');
+    }
+
+    // Mark as processed
+    this.processedProofs.add(proof.txid);
+
+    return proof;
+  }
+
+  /**
+   * Verify a signature
+   */
+  verify(message, signatureHex, publicKey) {
+    const hash = Buffer.from(sha256(message), 'hex');
+    const signature = Buffer.from(signatureHex.slice(0, 128), 'hex');
+    return secp256k1.ecdsaVerify(signature, hash, publicKey);
+  }
+
+  /**
+   * Fetch and cache metadata
+   */
+  async getMetadata(ocid) {
+    const cached = this.metadataCache.get(ocid);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
+
+    const url = await this.registry.resolve(ocid);
+    const response = await fetch(url, { timeout: 5000 });
+    const metadata = await response.json();
+
+    this.metadataCache.set(ocid, {
+      data: metadata,
+      expiresAt: Date.now() + 300000 // 5 min
+    });
+
+    return metadata;
+  }
+
+  /**
+   * Clean old nonces
+   */
+  cleanOldNonces() {
+    const cutoff = Math.floor(Date.now() / 1000) - 600;
+    for (const [key, timestamp] of this.seenNonces) {
+      if (timestamp < cutoff) {
+        this.seenNonces.delete(key);
+      }
+    }
+  }
+}
+
+/**
+ * Utility: SHA-256 hash
+ */
+function sha256(data) {
+  return crypto.createHash('sha256').update(data).digest('hex');
+}
+
+/**
+ * Utility: Canonical JSON
+ */
+function canonicalize(obj) {
+  if (obj === null || typeof obj !== 'object') {
+    return JSON.stringify(obj);
+  }
+  if (Array.isArray(obj)) {
+    return '[' + obj.map(canonicalize).join(',') + ']';
+  }
+  const keys = Object.keys(obj).sort();
+  const pairs = keys.map(k => `"${k}":${canonicalize(obj[k])}`);
+  return '{' + pairs.join(',') + '}';
+}
+
+module.exports = { OpenchargeClient, OpenchargeVerifier, sha256, canonicalize };
+```
+
+### Usage Example
+
+```javascript
+const { OpenchargeClient, OpenchargeVerifier } = require('./opencharge');
+
+// PayPal's client
+const paypal = new OpenchargeClient(200, 'private_key_hex...');
+
+// Sign a payment request
+const headers = paypal.signRequest(
+  'POST',
+  '/opencharge/payment/request',
+  { recipient: '+256701234567', amount: '10000.00', currency: 'UGX' }
+);
+
+// Create a proof (for banks/settlement providers)
+const barclays = new OpenchargeClient(100, 'barclays_private_key...');
+const { proof, signature } = barclays.createProof({
+  txid: 'barclays_tx_456',
+  from: 200,
+  to: 300,
+  amount: '10000.00',
+  currency: 'UGX',
+  memo: 'Settlement for ORD-2024-001'
+});
+
+// MTN verifies the proof
+const mtn = new OpenchargeVerifier(registryContract);
+const acceptedIssuers = [100, 101, 102]; // From MTN's metadata
+
+try {
+  const verified = await mtn.verifyProof({ proof, signature }, acceptedIssuers);
+  console.log('Proof valid! Crediting merchant...');
+} catch (err) {
+  console.error('Proof rejected:', err.message);
+}
+```
+
+---
+
+## Test Vectors
+
+```
+═══════════════════════════════════════════════════════════════
+TEST VECTOR 1: Request Signature
+═══════════════════════════════════════════════════════════════
+
+Private Key: 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+
+OCID: 200
+Timestamp: 1706500000
+Nonce: req_test123
+Method: POST
+Path: /opencharge/payment/request
+Body: {"amount":"100.00","currency":"USD"}
+
+Body Hash (SHA256): d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592
+
+Canonical Message:
+200
+1706500000
+req_test123
+POST
+/opencharge/payment/request
+d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592
+
+Message Hash (SHA256): [compute]
+Expected Signature: [compute with test key]
+
+
+═══════════════════════════════════════════════════════════════
+TEST VECTOR 2: Proof Signature
+═══════════════════════════════════════════════════════════════
+
+Proof Object:
+{
+  "amount": "10000.00",
+  "currency": "UGX",
+  "from": 200,
+  "issuer": 100,
+  "timestamp": 1706500500,
+  "to": 300,
+  "txid": "test_tx_001"
+}
+
+Canonical (sorted, no whitespace):
+{"amount":"10000.00","currency":"UGX","from":200,"issuer":100,"timestamp":1706500500,"to":300,"txid":"test_tx_001"}
+
+Hash (SHA256): [compute]
+Expected Signature: [compute with issuer's test key]
+```
+
+---
+
+## Metadata Hosting Examples
+
+### Static File (S3, GitHub Pages, etc.)
+
+```
+https://your-bucket.s3.amazonaws.com/opencharge/metadata.json
+```
+
+### Dynamic Endpoint
+
+```python
+@app.route('/opencharge/metadata.json')
+def metadata():
+    return jsonify({
+        "opencharge": "0.1",
+        "name": "My Payment Service",
+        "publicKey": current_public_key(),  # Supports rotation
+        "endpoint": "https://api.myservice.com/opencharge",
+        # ...
+    })
+```
+
+### With Key Rotation Support
+
+```python
+@app.route('/opencharge/metadata.json')
+def metadata():
+    keys = get_active_keys()  # Could return multiple during rotation
+    return jsonify({
+        "opencharge": "0.1",
+        "publicKey": keys['primary'],
+        "previousKey": keys.get('previous'),  # Optional: grace period
+        "keyRotatedAt": keys.get('rotated_at'),
+        # ...
+    })
+```
+
+---
+
+_Opencharge Protocol Specification v0.1_
+_Draft - Subject to Change_

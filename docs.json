@@ -17,9 +17,23 @@
             "group": "Getting started",
             "pages": [
               "index",
-              "guides/getting-started/untitled-page",
-              "quickstart",
-              "development"
+              "guides/getting-started/open-charge-protocol",
+              "guides/getting-started/development"
+            ]
+          },
+          {
+            "group": "Protocol Specification",
+            "pages": [
+              "guides/protocol/protocol-overview",
+              "guides/protocol/router-registry",
+              "guides/protocol/request-authentication",
+              "guides/protocol/transaction-proofs",
+              "guides/protocol/api-endpoints",
+              "guides/protocol/settlement-flow",
+              "guides/protocol/error-codes",
+              "guides/protocol/security",
+              "guides/protocol/faq",
+              "guides/protocol/implementation-guide"
             ]
           },
           {

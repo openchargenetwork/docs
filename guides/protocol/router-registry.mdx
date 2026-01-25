@@ -1,0 +1,135 @@
+---
+title: "Router Registry"
+description: "The decentralized identity registry for Opencharge services using ERC-721 NFTs"
+---
+
+## Overview
+
+The Router Registry is an ERC-721 NFT contract that serves as a decentralized directory. Each NFT represents an Opencharge identity, and the token ID is the OCID.
+
+## Contract
+
+```solidity
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+
+contract RouterRegistry is ERC721 {
+
+    mapping(uint256 => string) private _metadataUrls;
+    uint256 private _nextTokenId;
+
+    event OCIDRegistered(uint256 indexed ocid, address indexed owner, string metadataUrl);
+    event MetadataUrlUpdated(uint256 indexed ocid, string metadataUrl);
+
+    constructor() ERC721("Opencharge Router", "OCID") {}
+
+    /// @notice Register a new OCID
+    /// @param metadataUrl URL pointing to the service's metadata JSON
+    /// @return ocid The newly minted OCID
+    function register(string calldata metadataUrl) external returns (uint256 ocid) {
+        ocid = _nextTokenId++;
+        _mint(msg.sender, ocid);
+        _metadataUrls[ocid] = metadataUrl;
+        emit OCIDRegistered(ocid, msg.sender, metadataUrl);
+    }
+
+    /// @notice Update metadata URL (owner only)
+    function updateMetadataUrl(uint256 ocid, string calldata metadataUrl) external {
+        require(ownerOf(ocid) == msg.sender, "Not OCID owner");
+        _metadataUrls[ocid] = metadataUrl;
+        emit MetadataUrlUpdated(ocid, metadataUrl);
+    }
+
+    /// @notice Resolve OCID to metadata URL
+    function resolve(uint256 ocid) external view returns (string memory) {
+        require(_ownerOf(ocid) != address(0), "OCID does not exist");
+        return _metadataUrls[ocid];
+    }
+
+    /// @notice Check if OCID exists
+    function exists(uint256 ocid) external view returns (bool) {
+        return _ownerOf(ocid) != address(0);
+    }
+
+    /// @notice Total registered OCIDs
+    function totalSupply() external view returns (uint256) {
+        return _nextTokenId;
+    }
+}
+```
+
+## Metadata Schema
+
+The metadata URL must return a JSON document:
+
+```json
+{
+  "opencharge": "0.1",
+  "name": "MTN Mobile Money Uganda",
+  "description": "Mobile money service for Uganda",
+  "icon": "https://mtn.co.ug/icon.png",
+
+  "publicKey": "a34b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b",
+
+  "endpoint": "https://api.mtn.co.ug/opencharge",
+
+  "capabilities": [
+    "payment.receive",
+    "settlement.accept"
+  ],
+
+  "settlement": {
+    "currencies": ["UGX", "USD"],
+    "accepts": [
+      { "ocid": 100, "name": "Barclays Bank Uganda" },
+      { "ocid": 101, "name": "Stanbic Bank Uganda" },
+      { "ocid": 102, "name": "USDT Router" }
+    ]
+  },
+
+  "contact": "integrations@mtn.co.ug"
+}
+```
+
+### Field Reference
+
+| Field                   | Type   | Required | Description                                                          |
+| ----------------------- | ------ | -------- | -------------------------------------------------------------------- |
+| `opencharge`            | string | Yes      | Protocol version                                                     |
+| `name`                  | string | Yes      | Human-readable service name                                          |
+| `description`           | string | No       | Service description                                                  |
+| `icon`                  | string | No       | URL to service logo                                                  |
+| `publicKey`             | string | Yes      | secp256k1 public key (128 hex chars, uncompressed without 04 prefix) |
+| `endpoint`              | string | Yes      | Base URL for Opencharge API                                          |
+| `capabilities`          | array  | Yes      | List of supported operations                                         |
+| `settlement.currencies` | array  | Yes\*    | Supported currencies                                                 |
+| `settlement.accepts`    | array  | Yes\*    | OCIDs accepted for settlement                                        |
+| `contact`               | string | No       | Integration support contact                                          |
+
+\*Required if service accepts settlement
+
+### Standard Capabilities
+
+| Capability           | Description                                        |
+| -------------------- | -------------------------------------------------- |
+| `payment.send`       | Can initiate outbound payments                     |
+| `payment.receive`    | Can receive inbound payments                       |
+| `settlement.accept`  | Accepts settlement proofs                          |
+| `settlement.provide` | Provides signed proofs (banks, etc.)               |
+| `transfer.execute`   | Can execute transfers on behalf of account holders |
+
+## Multiple OCIDs
+
+A single entity MAY register multiple OCIDs for different purposes:
+
+```
+PayPal Holdings
+├── OCID 200: PayPal Subscriptions
+├── OCID 201: PayPal One-Time Payments
+├── OCID 202: PayPal Merchant Services
+└── OCID 203: Venmo
+```
+
+This enables isolated security domains, different rate limits, and service-specific configurations.

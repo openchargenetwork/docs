@@ -1,0 +1,31 @@
+---
+title: "Security Considerations"
+description: "Security best practices for implementing the Opencharge protocol"
+---
+
+## Private Key Security
+
+Your OCID private key authenticates ALL your actions. Compromise means full impersonation.
+
+**Requirements:**
+
+- Store in HSM or secure enclave for production
+- Never log or transmit private keys
+- Implement key rotation via metadata update
+- Monitor for unauthorized signatures
+
+## Replay Protection
+
+- **Requests**: Use unique nonces per request. Track nonces within timestamp window.
+- **Proofs**: Track processed proof `txid`s. Reject duplicates.
+
+## Metadata Security
+
+- Always fetch via HTTPS
+- Implement timeouts (5 seconds recommended)
+- Cache with short TTL (5 minutes recommended)
+- Validate schema before trusting
+
+## Settlement Trust
+
+Only add OCIDs to `settlement.accepts` for entities you have a real business relationship with. The protocol verifies cryptographic authenticity—it doesn't establish trust.

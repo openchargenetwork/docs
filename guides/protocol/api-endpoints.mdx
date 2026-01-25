@@ -1,0 +1,165 @@
+---
+title: "API Endpoints"
+description: "Standard Opencharge API endpoints for capabilities, payments, settlement, and transfers"
+---
+
+## GET /capabilities
+
+Discover a service's capabilities and settlement preferences.
+
+**Response:**
+
+```json
+{
+  "ocid": 300,
+  "name": "MTN Mobile Money Uganda",
+  "capabilities": ["payment.receive", "settlement.accept"],
+  "settlement": {
+    "currencies": ["UGX", "USD"],
+    "accepts": [
+      { "ocid": 100, "name": "Barclays Bank Uganda" },
+      { "ocid": 101, "name": "Stanbic Bank Uganda" }
+    ]
+  }
+}
+```
+
+## POST /payment/request
+
+Initiate a payment request.
+
+**Request:**
+
+```json
+{
+  "recipient": "+256701234567",
+  "amount": "10000.00",
+  "currency": "UGX",
+  "reference": "ORD-2024-001",
+  "memo": "Payment for electronics",
+  "expiresAt": 1706503600
+}
+```
+
+**Response (awaiting settlement):**
+
+```json
+{
+  "status": "pending_settlement",
+  "txid": "momo_tx_789",
+  "amount": "10000.00",
+  "currency": "UGX",
+  "expiresAt": 1706503600,
+  "settlement": {
+    "accepts": [
+      { "ocid": 100, "name": "Barclays Bank Uganda" },
+      { "ocid": 101, "name": "Stanbic Bank Uganda" }
+    ]
+  }
+}
+```
+
+## POST /payment/settle
+
+Submit settlement proof to complete a pending payment.
+
+**Request:**
+
+```json
+{
+  "txid": "momo_tx_789",
+  "proof": {
+    "txid": "barclays_tx_456",
+    "issuer": 100,
+    "from": 200,
+    "to": 300,
+    "amount": "10000.00",
+    "currency": "UGX",
+    "timestamp": 1706500500,
+    "memo": "Settlement for ORD-2024-001"
+  },
+  "signature": "a1b2c3..."
+}
+```
+
+**Response (completed):**
+
+```json
+{
+  "status": "completed",
+  "txid": "momo_tx_789",
+  "completedAt": 1706500600,
+  "proof": {
+    "txid": "momo_tx_789",
+    "issuer": 300,
+    "from": 200,
+    "to": 400,
+    "amount": "10000.00",
+    "currency": "UGX",
+    "timestamp": 1706500600,
+    "memo": "Payment for electronics"
+  },
+  "signature": "d4e5f6..."
+}
+```
+
+Note: The merchant (OCID 400 in this example) receives MTN's proof. They don't see or need Barclays' proof—that's between PayPal and MTN.
+
+## POST /transfer
+
+Execute a transfer (for banks, settlement providers).
+
+**Request:**
+
+```json
+{
+  "from": {
+    "reference": "PAYPAL-RESERVES-UG"
+  },
+  "to": {
+    "ocid": 300,
+    "reference": "MTN-SETTLEMENTS"
+  },
+  "amount": "10000.00",
+  "currency": "UGX",
+  "memo": "Settlement for momo_tx_789"
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": "completed",
+  "proof": {
+    "txid": "barclays_tx_456",
+    "issuer": 100,
+    "from": 200,
+    "to": 300,
+    "amount": "10000.00",
+    "currency": "UGX",
+    "timestamp": 1706500500,
+    "memo": "Settlement for momo_tx_789"
+  },
+  "signature": "a1b2c3..."
+}
+```
+
+## GET /verify/:txid
+
+Optional endpoint for additional verification.
+
+**Response:**
+
+```json
+{
+  "txid": "barclays_tx_456",
+  "status": "confirmed",
+  "issuer": 100,
+  "from": 200,
+  "to": 300,
+  "amount": "10000.00",
+  "currency": "UGX",
+  "timestamp": 1706500500
+}
+```
