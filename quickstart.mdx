@@ -1,79 +1,1380 @@
 ---
-title: "Protocol conceipts"
-description: "Start building awesome documentation in minutes"
+description: "Opencharge Protocol Specification v0.1"
+title: "Opencharge Protocol"
 ---
 
-## Get started in three steps
+## Abstract
 
-Get your documentation site running locally and make your first customization.
+Opencharge is a decentralized protocol for payment service interoperability and verifiable settlement. It enables any payment service to authenticate requests and provide cryptographic proof of completed transfers—creating a trust network where signed receipts flow between parties to complete cross-platform payments.
 
-### Step 1: Set up your local environment
+**Core Principles:**
 
-<AccordionGroup>
-  <Accordion title="Clone your docs locally" icon="copy">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+- **One identity, everywhere**: Register once, authenticate with any service
+- **Signed receipts**: Every transfer produces a verifiable proof
+- **Trust networks**: Services declare who they accept settlement from
+- **Private rails**: Like blockchain transactions, but without the public ledger
 
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion title="Start the preview server" icon="rectangle-terminal">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+---
 
-    <Tip>
-      Your preview updates automatically as you edit files.
-    </Tip>
-  </Accordion>
-</AccordionGroup>
+## Table of Contents
 
-### Step 2: Deploy your changes
+ 1. [Core Concepts](#1-core-concepts)
+ 2. [Router Registry](#2-router-registry)
+ 3. [Signatures](#3-signatures)
+ 4. [HTTP API](#4-http-api)
+ 5. [Transaction Proofs](#5-transaction-proofs)
+ 6. [Standard Endpoints](#6-standard-endpoints)
+ 7. [Settlement Flow](#7-settlement-flow)
+ 8. [Error Codes](#8-error-codes)
+ 9. [Security Considerations](#9-security-considerations)
+10. [FAQ](#10-faq)
+11. [Implementation Checklist](#11-implementation-checklist)
+12. [Reference Implementation](#12-reference-implementation)
 
-<AccordionGroup>
-  <Accordion title="Install our GitHub app" icon="github">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+---
 
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-  </Accordion>
-  <Accordion title="Update your site name and colors" icon="palette">
-    For a first change, let's update the name and colors of your docs site.
+## 1. Core Concepts
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+### 1.1 The Problem
 
-    <Tip>
-      Try changing the primary color to see an immediate difference!
-    </Tip>
-  </Accordion>
-</AccordionGroup>
+A PayPal user in the US wants to pay a Mobile Money merchant in Uganda.
 
-### Step 3: Go live
+**Today's reality:**
 
-<Accordion title="Publish your docs" icon="rocket">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+- PayPal has no MTN MOMO integration
+- MTN doesn't trust PayPal's internal records
+- Building this corridor takes months of bilateral negotiation
+- Each new corridor requires custom integration work
 
-## Next steps
+**With Opencharge:**
 
-Now that you have your docs running, explore these key features:
+- PayPal checks MTN's metadata: "Who do you accept settlement from?"
+- MTN accepts settlement from Barclays Bank Uganda
+- PayPal has reserves at Barclays
+- PayPal instructs Barclays to pay MTN → receives signed proof
+- PayPal presents proof to MTN → MTN verifies Barclays' signature
+- MTN credits merchant → transaction complete
 
-<CardGroup cols={2}>
-  <Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-    Learn MDX syntax and start writing your documentation.
-  </Card>
-  <Card title="Customize style" icon="palette" href="/essentials/settings">
-    Make your docs match your brand perfectly.
-  </Card>
-  <Card title="Add code examples" icon="square-code" href="/essentials/code">
-    Include syntax-highlighted code blocks.
-  </Card>
-  <Card title="API documentation" icon="code" href="/api-reference/introduction">
-    Auto-generate API docs from OpenAPI specs.
-  </Card>
-</CardGroup>
+### 1.2 Key Insight: Signed Receipts
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+Every completed transfer produces a **signed transaction proof**. This proof:
+
+- Is signed by the service that executed the transfer
+- Can be verified by anyone with the signer's public key
+- Serves as portable evidence of payment
+- Functions like a blockchain transaction receipt, but private
+
+### 1.3 Trust Networks
+
+Services explicitly declare which other services they trust for settlement. This creates a directed graph of trust relationships:
+
+```
+                    ┌─────────────┐
+         accepts    │   Barclays  │    accepts
+       ┌───────────►│  (OCID 100) │◄───────────┐
+       │            └─────────────┘            │
+       │                                       │
+┌──────┴──────┐                         ┌──────┴──────┐
+│  MTN MOMO   │                         │   Stanbic   │
+│  (OCID 300) │                         │  (OCID 101) │
+└─────────────┘                         └─────────────┘
+```
+
+**Important**: Accepting settlement from an OCID implies you already have a working relationship with that entity. The protocol only facilitates verification, not trust establishment.
+
+### 1.4 Terminology
+
+| Term                  | Definition                                                                 |
+| --------------------- | -------------------------------------------------------------------------- |
+| **OCID**              | Opencharge ID - a unique identifier (NFT token ID) for a service           |
+| **Router Registry**   | Smart contract mapping OCIDs to metadata URLs                              |
+| **Metadata**          | JSON document containing public key, endpoints, and settlement preferences |
+| **Transaction Proof** | Signed receipt attesting that a transfer was completed                     |
+| **Settlement**        | The process of presenting proof to satisfy a payment obligation            |
+
+---
+
+## 2. Router Registry
+
+### 2.1 Overview
+
+The Router Registry is an ERC-721 NFT contract that serves as a decentralized directory. Each NFT represents an Opencharge identity, and the token ID is the OCID.
+
+### 2.2 Contract
+
+```solidity
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+
+contract RouterRegistry is ERC721 {
+    
+    mapping(uint256 => string) private _metadataUrls;
+    uint256 private _nextTokenId;
+    
+    event OCIDRegistered(uint256 indexed ocid, address indexed owner, string metadataUrl);
+    event MetadataUrlUpdated(uint256 indexed ocid, string metadataUrl);
+    
+    constructor() ERC721("Opencharge Router", "OCID") {}
+    
+    /// @notice Register a new OCID
+    /// @param metadataUrl URL pointing to the service's metadata JSON
+    /// @return ocid The newly minted OCID
+    function register(string calldata metadataUrl) external returns (uint256 ocid) {
+        ocid = _nextTokenId++;
+        _mint(msg.sender, ocid);
+        _metadataUrls[ocid] = metadataUrl;
+        emit OCIDRegistered(ocid, msg.sender, metadataUrl);
+    }
+    
+    /// @notice Update metadata URL (owner only)
+    function updateMetadataUrl(uint256 ocid, string calldata metadataUrl) external {
+        require(ownerOf(ocid) == msg.sender, "Not OCID owner");
+        _metadataUrls[ocid] = metadataUrl;
+        emit MetadataUrlUpdated(ocid, metadataUrl);
+    }
+    
+    /// @notice Resolve OCID to metadata URL
+    function resolve(uint256 ocid) external view returns (string memory) {
+        require(_ownerOf(ocid) != address(0), "OCID does not exist");
+        return _metadataUrls[ocid];
+    }
+    
+    /// @notice Check if OCID exists
+    function exists(uint256 ocid) external view returns (bool) {
+        return _ownerOf(ocid) != address(0);
+    }
+    
+    /// @notice Total registered OCIDs
+    function totalSupply() external view returns (uint256) {
+        return _nextTokenId;
+    }
+}
+```
+
+### 2.3 Metadata Schema
+
+The metadata URL must return a JSON document:
+
+```json
+{
+  "opencharge": "0.1",
+  "name": "MTN Mobile Money Uganda",
+  "description": "Mobile money service for Uganda",
+  "icon": "https://mtn.co.ug/icon.png",
+  
+  "publicKey": "a34b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b",
+  
+  "endpoint": "https://api.mtn.co.ug/opencharge",
+  
+  "capabilities": [
+    "payment.receive",
+    "settlement.accept"
+  ],
+  
+  "settlement": {
+    "currencies": ["UGX", "USD"],
+    "accepts": [
+      { "ocid": 100, "name": "Barclays Bank Uganda" },
+      { "ocid": 101, "name": "Stanbic Bank Uganda" },
+      { "ocid": 102, "name": "USDT Router" }
+    ]
+  },
+  
+  "contact": "integrations@mtn.co.ug"
+}
+```
+
+#### Field Reference
+
+| Field                   | Type   | Required | Description                                                          |
+| ----------------------- | ------ | -------- | -------------------------------------------------------------------- |
+| `opencharge`            | string | Yes      | Protocol version                                                     |
+| `name`                  | string | Yes      | Human-readable service name                                          |
+| `description`           | string | No       | Service description                                                  |
+| `icon`                  | string | No       | URL to service logo                                                  |
+| `publicKey`             | string | Yes      | secp256k1 public key (128 hex chars, uncompressed without 04 prefix) |
+| `endpoint`              | string | Yes      | Base URL for Opencharge API                                          |
+| `capabilities`          | array  | Yes      | List of supported operations                                         |
+| `settlement.currencies` | array  | Yes\*    | Supported currencies                                                 |
+| `settlement.accepts`    | array  | Yes\*    | OCIDs accepted for settlement                                        |
+| `contact`               | string | No       | Integration support contact                                          |
+
+\*Required if service accepts settlement
+
+#### Standard Capabilities
+
+| Capability           | Description                                        |
+| -------------------- | -------------------------------------------------- |
+| `payment.send`       | Can initiate outbound payments                     |
+| `payment.receive`    | Can receive inbound payments                       |
+| `settlement.accept`  | Accepts settlement proofs                          |
+| `settlement.provide` | Provides signed proofs (banks, etc.)               |
+| `transfer.execute`   | Can execute transfers on behalf of account holders |
+
+### 2.4 Multiple OCIDs
+
+A single entity MAY register multiple OCIDs for different purposes:
+
+```
+PayPal Holdings
+├── OCID 200: PayPal Subscriptions
+├── OCID 201: PayPal One-Time Payments  
+├── OCID 202: PayPal Merchant Services
+└── OCID 203: Venmo
+```
+
+This enables isolated security domains, different rate limits, and service-specific configurations.
+
+---
+
+## 3. Signatures
+
+### 3.1 Algorithm
+
+All signatures use **secp256k1 ECDSA** over **SHA-256**.
+
+```
+hash = SHA256(message)
+signature = secp256k1_sign(privateKey, hash)
+```
+
+### 3.2 Public Key Format
+
+128-character hex string representing the uncompressed secp256k1 public key (64 bytes), **without** the 04 prefix:
+
+```
+publicKey = x_coordinate (32 bytes / 64 hex) + y_coordinate (32 bytes / 64 hex)
+```
+
+### 3.3 Signature Format
+
+130-character hex string:
+
+```
+signature = r (64 hex) + s (64 hex) + v (2 hex)
+
+Where v = "1b" (27) or "1c" (28) for recovery ID
+```
+
+---
+
+## 4. HTTP API
+
+### 4.1 Request Headers
+
+All authenticated requests MUST include:
+
+| Header           | Description               | Example       |
+| ---------------- | ------------------------- | ------------- |
+| `X-OC-ID`        | Sender's OCID             | `200`         |
+| `X-OC-Timestamp` | Unix timestamp (seconds)  | `1706500000`  |
+| `X-OC-Nonce`     | Unique request identifier | `req_abc123`  |
+| `X-OC-Signature` | Request signature         | `a1b2c3...1b` |
+
+### 4.2 Request Signature
+
+**Canonical format:**
+
+```
+ocid
+timestamp
+nonce
+method
+path
+body_hash
+```
+
+Where:
+
+- `ocid`: Sender's OCID as decimal string
+- `timestamp`: Unix seconds as decimal string
+- `nonce`: Unique request ID (for replay protection)
+- `method`: HTTP method, uppercase
+- `path`: Full path including query string
+- `body_hash`: SHA-256 of request body (hex), or SHA-256 of empty string if no body
+
+**Example:**
+
+```
+200
+1706500000
+req_abc123
+POST
+/opencharge/payment/request
+7d865e959b2466918c9863afca942d0fb89d7c9ac0c99bafc3749504ded97730
+```
+
+Sign: `secp256k1_sign(privateKey, SHA256(canonical))`
+
+### 4.3 Response Headers
+
+Responses SHOULD include authentication:
+
+| Header           | Description        |
+| ---------------- | ------------------ |
+| `X-OC-ID`        | Responder's OCID   |
+| `X-OC-Timestamp` | Response timestamp |
+| `X-OC-Signature` | Response signature |
+
+**Canonical response format:**
+
+```
+ocid
+timestamp
+status_code
+body_hash
+```
+
+### 4.4 Validation Rules
+
+**Timestamp**: Accept within ±300 seconds (5 minutes) of server time.
+
+**Nonce**: Track seen nonces to prevent replay attacks. Nonces only need to be unique within the timestamp window.
+
+### 4.5 Example Request
+
+```http
+POST /opencharge/payment/request HTTP/1.1
+Host: api.mtn.co.ug
+Content-Type: application/json
+X-OC-ID: 200
+X-OC-Timestamp: 1706500000
+X-OC-Nonce: req_abc123
+X-OC-Signature: a1b2c3d4...7f1b
+
+{
+  "recipient": "+256701234567",
+  "amount": "10000.00",
+  "currency": "UGX",
+  "reference": "ORD-2024-001",
+  "memo": "Payment for electronics",
+  "expiresAt": 1706503600
+}
+```
+
+---
+
+## 5. Transaction Proofs
+
+### 5.1 Purpose
+
+A transaction proof is a signed receipt attesting that a transfer was completed. It's the cryptographic evidence that enables trustless settlement.
+
+### 5.2 Proof Structure
+
+```json
+{
+  "proof": {
+    "txid": "barclays_tx_456",
+    "issuer": 100,
+    "from": 200,
+    "to": 300,
+    "amount": "10000.00",
+    "currency": "UGX",
+    "timestamp": 1706500500,
+    "memo": "Settlement for ORD-2024-001"
+  },
+  "signature": "a1b2c3d4e5f6...7f1b"
+}
+```
+
+#### Proof Fields
+
+| Field       | Type   | Required | Description                                |
+| ----------- | ------ | -------- | ------------------------------------------ |
+| `txid`      | string | Yes      | Unique transaction ID from issuer          |
+| `issuer`    | number | Yes      | OCID of service that executed the transfer |
+| `from`      | number | Yes      | OCID of sender                             |
+| `to`        | number | Yes      | OCID of recipient                          |
+| `amount`    | string | Yes      | Amount as decimal string                   |
+| `currency`  | string | Yes      | ISO 4217 currency code                     |
+| `timestamp` | number | Yes      | Unix timestamp when transfer completed     |
+| `memo`      | string | No       | Human-readable description                 |
+
+### 5.3 Proof Signature
+
+The signature is over the canonical JSON of the `proof` object:
+
+```javascript
+canonical = canonicalize(proof)  // Sorted keys, no whitespace
+hash = SHA256(canonical)
+signature = secp256k1_sign(issuer_private_key, hash)
+```
+
+**Canonicalization**: Keys sorted alphabetically at all levels, no whitespace, minimal escaping.
+
+### 5.4 Verifying a Proof
+
+```
+1. Extract issuer OCID from proof
+2. Fetch issuer's metadata from Router Registry
+3. Extract publicKey from metadata
+4. Canonicalize the proof object
+5. Compute SHA256(canonical)
+6. Verify signature against public key
+7. Confirm issuer is in your settlement.accepts list
+8. Confirm amount and currency match expected values
+9. Store txid to prevent replay
+```
+
+---
+
+## 6. Standard Endpoints
+
+### 6.1 GET /capabilities
+
+Discover a service's capabilities and settlement preferences.
+
+**Response:**
+
+```json
+{
+  "ocid": 300,
+  "name": "MTN Mobile Money Uganda",
+  "capabilities": ["payment.receive", "settlement.accept"],
+  "settlement": {
+    "currencies": ["UGX", "USD"],
+    "accepts": [
+      { "ocid": 100, "name": "Barclays Bank Uganda" },
+      { "ocid": 101, "name": "Stanbic Bank Uganda" }
+    ]
+  }
+}
+```
+
+### 6.2 POST /payment/request
+
+Initiate a payment request.
+
+**Request:**
+
+```json
+{
+  "recipient": "+256701234567",
+  "amount": "10000.00",
+  "currency": "UGX",
+  "reference": "ORD-2024-001",
+  "memo": "Payment for electronics",
+  "expiresAt": 1706503600
+}
+```
+
+**Response (awaiting settlement):**
+
+```json
+{
+  "status": "pending_settlement",
+  "txid": "momo_tx_789",
+  "amount": "10000.00",
+  "currency": "UGX",
+  "expiresAt": 1706503600,
+  "settlement": {
+    "accepts": [
+      { "ocid": 100, "name": "Barclays Bank Uganda" },
+      { "ocid": 101, "name": "Stanbic Bank Uganda" }
+    ]
+  }
+}
+```
+
+### 6.3 POST /payment/settle
+
+Submit settlement proof to complete a pending payment.
+
+**Request:**
+
+```json
+{
+  "txid": "momo_tx_789",
+  "proof": {
+    "txid": "barclays_tx_456",
+    "issuer": 100,
+    "from": 200,
+    "to": 300,
+    "amount": "10000.00",
+    "currency": "UGX",
+    "timestamp": 1706500500,
+    "memo": "Settlement for ORD-2024-001"
+  },
+  "signature": "a1b2c3..."
+}
+```
+
+**Response (completed):**
+
+```json
+{
+  "status": "completed",
+  "txid": "momo_tx_789",
+  "completedAt": 1706500600,
+  "proof": {
+    "txid": "momo_tx_789",
+    "issuer": 300,
+    "from": 200,
+    "to": 400,
+    "amount": "10000.00",
+    "currency": "UGX",
+    "timestamp": 1706500600,
+    "memo": "Payment for electronics"
+  },
+  "signature": "d4e5f6..."
+}
+```
+
+Note: The merchant (OCID 400 in this example) receives MTN's proof. They don't see or need Barclays' proof—that's between PayPal and MTN.
+
+### 6.4 POST /transfer
+
+Execute a transfer (for banks, settlement providers).
+
+**Request:**
+
+```json
+{
+  "from": {
+    "reference": "PAYPAL-RESERVES-UG"
+  },
+  "to": {
+    "ocid": 300,
+    "reference": "MTN-SETTLEMENTS"
+  },
+  "amount": "10000.00",
+  "currency": "UGX",
+  "memo": "Settlement for momo_tx_789"
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": "completed",
+  "proof": {
+    "txid": "barclays_tx_456",
+    "issuer": 100,
+    "from": 200,
+    "to": 300,
+    "amount": "10000.00",
+    "currency": "UGX",
+    "timestamp": 1706500500,
+    "memo": "Settlement for momo_tx_789"
+  },
+  "signature": "a1b2c3..."
+}
+```
+
+### 6.5 GET /verify/txid
+
+Optional endpoint for additional verification.
+
+**Response:**
+
+```json
+{
+  "txid": "barclays_tx_456",
+  "status": "confirmed",
+  "issuer": 100,
+  "from": 200,
+  "to": 300,
+  "amount": "10000.00",
+  "currency": "UGX",
+  "timestamp": 1706500500
+}
+```
+
+---
+
+## 7. Settlement Flow
+
+### Complete Example: PayPal → MTN MOMO
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  PayPal user wants to pay MTN MOMO merchant 10,000 UGX                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+STEP 1: PayPal discovers MTN's settlement preferences
+═══════════════════════════════════════════════════════
+
+    PayPal                                              MTN MOMO
+       │                                                    │
+       │  GET /capabilities                                 │
+       │ ──────────────────────────────────────────────────►│
+       │                                                    │
+       │  { settlement.accepts: [Barclays, Stanbic] }       │
+       │◄────────────────────────────────────────────────── │
+       │                                                    │
+
+    PayPal thinks: "I have reserves at Barclays (OCID 100). Perfect."
+
+
+STEP 2: PayPal initiates payment request
+════════════════════════════════════════
+
+    PayPal                                              MTN MOMO
+       │                                                    │
+       │  POST /payment/request                             │
+       │  { recipient: "+256701234567",                     │
+       │    amount: "10000.00", currency: "UGX" }           │
+       │ ──────────────────────────────────────────────────►│
+       │                                                    │
+       │  { status: "pending_settlement",                   │
+       │    txid: "momo_tx_789",                            │
+       │    settlement.accepts: [100, 101] }                │
+       │◄────────────────────────────────────────────────── │
+       │                                                    │
+
+    MTN has created a pending transaction. Now waiting for settlement.
+
+
+STEP 3: PayPal instructs Barclays to pay MTN
+════════════════════════════════════════════
+
+    PayPal                                              Barclays
+       │                                                    │
+       │  POST /transfer                                    │
+       │  { from: { ocid: 100 },                        │
+       │    to: { ocid: 300 },                              │
+       │    amount: "10000.00", currency: "UGX" }           │
+       │ ──────────────────────────────────────────────────►│
+       │                                                    │
+       │                        [Barclays debits PayPal,    │
+       │                         credits MTN's account]     │
+       │                                                    │
+       │  { status: "completed",                            │
+       │    proof: { txid: "barclays_tx_456", ... },        │
+       │    signature: "abc123..." }                        │
+       │◄────────────────────────────────────────────────── │
+       │                                                    │
+
+    PayPal now has cryptographic proof that Barclays paid MTN.
+
+
+STEP 4: PayPal submits proof to MTN
+═══════════════════════════════════
+
+    PayPal                                              MTN MOMO
+       │                                                    │
+       │  POST /payment/settle                              │
+       │  { txid: "momo_tx_789",                            │
+       │    proof: { txid: "barclays_tx_456", ... },        │
+       │    signature: "abc123..." }                        │
+       │ ──────────────────────────────────────────────────►│
+       │                                                    │
+       │                        [MTN verifies:              │
+       │                         ✓ Signature valid          │
+       │                         ✓ Issuer (100) is trusted  │
+       │                         ✓ Amount matches           │
+       │                         ✓ We are the recipient]    │
+       │                                                    │
+       │                        [MTN credits merchant]      │
+       │                                                    │
+       │  { status: "completed",                            │
+       │    proof: { txid: "momo_tx_789", ... },            │
+       │    signature: "def456..." }                        │
+       │◄────────────────────────────────────────────────── │
+       │                                                    │
+
+    Done! PayPal stores MTN's proof. Merchant receives funds.
+
+
+WHAT EACH PARTY HOLDS:
+══════════════════════
+
+    PayPal:   Barclays proof (sent to MTN) + MTN proof (confirmation)
+    MTN:      Barclays proof (internal audit) + own proof (issued to merchant)
+    Merchant: MTN proof (confirmation of receipt)
+    Barclays: Internal records + proof issued to PayPal
+```
+
+---
+
+## 8. Error Codes
+
+| Code                       | HTTP | Description                                 |
+| -------------------------- | ---- | ------------------------------------------- |
+| `INVALID_SIGNATURE`        | 401  | Signature verification failed               |
+| `TIMESTAMP_EXPIRED`        | 401  | Timestamp outside ±5 minute window          |
+| `NONCE_REUSED`             | 401  | Nonce already seen (replay attempt)         |
+| `UNKNOWN_OCID`             | 401  | OCID not found in registry                  |
+| `METADATA_UNAVAILABLE`     | 502  | Could not fetch sender's metadata           |
+| `INVALID_PROOF`            | 400  | Proof structure is malformed                |
+| `PROOF_SIGNATURE_INVALID`  | 400  | Proof signature verification failed         |
+| `ISSUER_NOT_ACCEPTED`      | 400  | Proof issuer not in settlement.accepts      |
+| `AMOUNT_MISMATCH`          | 400  | Proof amount doesn't match transaction      |
+| `CURRENCY_MISMATCH`        | 400  | Proof currency doesn't match transaction    |
+| `TXID_NOT_FOUND`           | 404  | Referenced transaction doesn't exist        |
+| `TRANSACTION_EXPIRED`      | 410  | Settlement window has closed                |
+| `INSUFFICIENT_FUNDS`       | 402  | Sender has insufficient balance             |
+| `CAPABILITY_NOT_SUPPORTED` | 400  | Service doesn't support requested operation |
+| `RATE_LIMITED`             | 429  | Too many requests                           |
+
+**Error Response Format:**
+
+```json
+{
+  "error": {
+    "code": "ISSUER_NOT_ACCEPTED",
+    "message": "Proof issuer OCID 999 is not in accepted settlement sources",
+    "details": {
+      "providedIssuer": 999,
+      "acceptedIssuers": [100, 101, 102]
+    }
+  }
+}
+```
+
+---
+
+## 9. Security Considerations
+
+### 9.1 Private Key Security
+
+Your OCID private key authenticates ALL your actions. Compromise means full impersonation.
+
+**Requirements:**
+
+- Store in HSM or secure enclave for production
+- Never log or transmit private keys
+- Implement key rotation via metadata update
+- Monitor for unauthorized signatures
+
+### 9.2 Replay Protection
+
+- **Requests**: Use unique nonces per request. Track nonces within timestamp window.
+- **Proofs**: Track processed proof `txid`s. Reject duplicates.
+
+### 9.3 Metadata Security
+
+- Always fetch via HTTPS
+- Implement timeouts (5 seconds recommended)
+- Cache with short TTL (5 minutes recommended)
+- Validate schema before trusting
+
+### 9.4 Settlement Trust
+
+Only add OCIDs to `settlement.accepts` for entities you have a real business relationship with. The protocol verifies cryptographic authenticity—it doesn't establish trust.
+
+---
+
+---
+
+## 10. FAQ
+
+### Identity & Registration
+
+**Q: Why use an NFT for identity?**
+
+The NFT provides:
+
+- **Permissionless registration**: Anyone can mint without approval
+- **Ownership transfer**: Identity can be sold or transferred
+- **On-chain record**: Tamper-proof registry of all OCIDs
+- **Wallet compatibility**: Standard ERC-721, works with existing tools
+
+**Q: Why not put the public key on-chain?**
+
+Storing the public key in mutable metadata (via URL) allows key rotation without gas costs. If we stored keys on-chain, every rotation would require a transaction.
+
+**Q: Can I have different keys for different endpoints?**
+
+Currently, one OCID = one key pair. If you need isolated keys, register multiple OCIDs. Future versions may support delegated signing keys.
+
+---
+
+### Merchants
+
+**Q: How do merchants accept payments via Opencharge?**
+
+Merchants register their own OCID. This OCID becomes their universal payment address:
+
+1. Merchant registers OCID (e.g., OCID 500)
+2. Merchant hosts metadata with their public key and accepted settlement sources
+3. Merchant shares OCID with payment services they want to accept (PayPal, Stripe, etc.)
+4. Payment service onboards merchant by OCID—no API keys needed
+5. Merchant can display OCID as QR code for in-person payments
+
+```
+┌─────────────────────────────────┐
+│                                 │
+│  ██████████████  ██████████████ │
+│  ██          ██  ██          ██ │
+│  ██  ██████  ██  ██  ██████  ██ │
+│  ██  ██████  ██  ██  ██████  ██ │
+│  ██          ██  ██          ██ │
+│  ██████████████  ██████████████ │
+│                                 │
+│        OCID: 500                │
+│    "Joe's Coffee Shop"          │
+│                                 │
+└─────────────────────────────────┘
+```
+
+Customer scans QR → their wallet fetches merchant's metadata → sees accepted settlement channels → initiates payment through a supported channel.
+
+**Q: What's in a merchant's metadata?**
+
+```json
+{
+  "opencharge": "0.1",
+  "name": "Joe's Coffee Shop",
+  "description": "Coffee and pastries in Kampala",
+  "icon": "https://joescoffee.ug/logo.png",
+  "publicKey": "a34b5c6d...",
+  "endpoint": "https://api.joescoffee.ug/opencharge",
+  "capabilities": ["payment.receive"],
+  "settlement": {
+    "currencies": ["UGX", "USD"],
+    "accepts": [
+      { "ocid": 300, "name": "MTN Mobile Money" },
+      { "ocid": 301, "name": "Airtel Money" },
+      { "ocid": 100, "name": "Barclays Bank Uganda" }
+    ]
+  }
+}
+```
+
+**Q: How does onboarding work without API keys?**
+
+Traditional flow:
+
+```
+1. Merchant signs up on PayPal
+2. PayPal generates API credentials
+3. Merchant integrates credentials into their system
+4. Credentials are PayPal-specific
+```
+
+Opencharge flow:
+
+```
+1. Merchant registers OCID once
+2. Merchant tells PayPal: "My OCID is 500"
+3. PayPal verifies merchant owns OCID (signed challenge)
+4. PayPal approves OCID for payments
+5. Same OCID works with Stripe, Square, anyone
+```
+
+The merchant's OCID and key pair replace per-service API credentials. One identity, universal acceptance.
+
+**Q: Does every merchant need an OCID?**
+
+No. The protocol doesn't force this structure. Services have flexibility:
+
+| Approach               | Description                                                 | Use Case                                     |
+| ---------------------- | ----------------------------------------------------------- | -------------------------------------------- |
+| **Merchant OCID**      | Merchant registers own OCID                                 | Businesses wanting universal payment address |
+| **Provider reference** | Provider uses internal reference (phone number, account ID) | Existing customers, minimal friction         |
+| **Hybrid**             | Provider offers OCID registration as optional upgrade       | Gradual adoption                             |
+
+For example, MTN MOMO can continue using phone numbers for most merchants:
+
+```json
+{ "recipient": "+256701234567", "amount": "10000.00" }
+```
+
+But merchants who want cross-platform interoperability can register an OCID and link it to their MOMO account. MTN maps OCID → phone number internally.
+
+**Q: What's the benefit for merchants?**
+
+- **One identity**: Same OCID works across all payment services
+- **No API key management**: No credentials to rotate per provider
+- **QR payments**: Print OCID, accept payments from any compatible wallet
+- **Portable**: Switch providers without changing payment address
+- **Verifiable**: Customers can verify they're paying the right merchant
+
+---
+
+### Settlement & Trust
+
+**Q: What if someone doesn't accept my settlement proof?**
+
+If MTN doesn't accept proofs from your chosen settlement provider, you need to find another path. Check MTN's `settlement.accepts` list and find a provider you both work with. The protocol doesn't solve business relationships—it makes existing relationships more efficient.
+
+**Q: Can PayPal route through multiple hops?**
+
+Yes, but that's PayPal's internal concern. If PayPal doesn't have direct access to any of MTN's accepted sources, PayPal might:
+
+1. Transfer to Wise (who has Barclays access)
+2. Wise transfers to Barclays
+3. Barclays credits MTN
+4. PayPal presents Barclays' proof to MTN
+
+MTN only sees and cares about the final hop (Barclays → MTN).
+
+**Q: What about disputes?**
+
+Out of scope. A valid signature from an accepted issuer means that issuer attests to completing the transfer. If there's a dispute (e.g., MTN claims Barclays' proof is valid but funds never arrived), that's between MTN and Barclays—a business relationship that exists independently of this protocol.
+
+---
+
+### Technical
+
+**Q: How is this different from blockchain?**
+
+| Aspect    | Blockchain           | Opencharge                    |
+| --------- | -------------------- | ----------------------------- |
+| Ledger    | Public, global       | Private, per-party            |
+| Consensus | Network-wide         | Bilateral (signer + verifier) |
+| Finality  | Block confirmation   | Signature verification        |
+| Privacy   | Pseudonymous at best | Fully private                 |
+| Speed     | Block time           | Instant                       |
+| Cost      | Gas fees             | Free (except registration)    |
+
+Opencharge gives you blockchain-style cryptographic receipts without the public ledger.
+
+**Q: Why not just use traditional APIs with OAuth?**
+
+Traditional API authentication:
+
+- Requires bilateral key exchange per service
+- Different credentials per integration
+- No portable proof of payment
+- Credentials tied to specific provider
+
+Opencharge:
+
+- One identity works everywhere
+- No pre-shared secrets needed
+- Proofs are portable and verifiable by third parties
+- Self-sovereign identity
+
+**Q: What happens if my metadata URL goes down?**
+
+Other services won't be able to verify your signatures until it's back. Recommendations:
+
+- Use highly available hosting (CDN, multiple regions)
+- Implement caching on the verifier side
+- Consider backup metadata URLs (future protocol extension)
+
+**Q: How do QR code payments work?**
+
+```
+1. Customer scans merchant's QR code (contains OCID)
+2. Customer's wallet fetches merchant metadata from registry
+3. Wallet server verifies settlement paths for compartibility and picks one eg barclays.
+4. Wallet displays: "Pay Joe's Coffee Shop 40$"
+5. Wallet shows settlement options based on its collection methods
+6. Customer selects payment method (e.g., "Pay via Card")
+7. Wallet collects the payment via visa card.
+6. Wallet server initiates payment flow with selected settlement path say via barclays.
+7. Settlement completes, merchant receives proof
+```
+
+The QR code can be as simple as:
+
+```
+opencharge:500
+```
+
+Or include amount for specific transactions:
+
+```
+opencharge:500?amount=15000&currency=UGX&ref=order-123
+```
+
+---
+
+## 11. Implementation Checklist
+
+### Payment Services (PayPal, Stripe, etc.)
+
+- Register OCID(s) on Router Registry
+- Host metadata JSON at stable HTTPS URL
+- Generate and secure secp256k1 key pair
+- Implement request signing (outbound)
+- Implement request verification (inbound)
+- Implement proof verification
+- Build settlement routing logic
+- Store proofs for audit trail
+- Handle key rotation
+
+### Settlement Providers (Banks, etc.)
+
+- Register OCID
+- Host metadata JSON
+- Implement `/transfer` endpoint
+- Generate signed proofs for all transfers
+- Implement `/verify` endpoint (recommended)
+- Map OCIDs to internal account references
+- Maintain proof archive
+
+### Payment Receivers (MTN MOMO, etc.)
+
+- Register OCID
+- Host metadata with `settlement.accepts` list
+- Implement `/payment/request` endpoint
+- Implement `/payment/settle` endpoint
+- Verify proofs from accepted issuers
+- Issue proofs to payers upon completion
+- Track pending transactions with expiry
+
+---
+
+## 12. Reference Implementation
+
+### JavaScript SDK
+
+```javascript
+const crypto = require('crypto');
+const secp256k1 = require('secp256k1');
+
+/**
+ * Opencharge Client - Sign requests and proofs
+ */
+class OpenchargeClient {
+  constructor(ocid, privateKeyHex) {
+    this.ocid = ocid;
+    this.privateKey = Buffer.from(privateKeyHex, 'hex');
+  }
+
+  /**
+   * Generate headers for an authenticated request
+   */
+  signRequest(method, path, body = null) {
+    const timestamp = Math.floor(Date.now() / 1000);
+    const nonce = `req_${crypto.randomBytes(16).toString('hex')}`;
+    const bodyStr = body ? JSON.stringify(body) : '';
+    const bodyHash = sha256(bodyStr);
+
+    const canonical = [
+      String(this.ocid),
+      String(timestamp),
+      nonce,
+      method.toUpperCase(),
+      path,
+      bodyHash
+    ].join('\n');
+
+    const signature = this.sign(canonical);
+
+    return {
+      'X-OC-ID': String(this.ocid),
+      'X-OC-Timestamp': String(timestamp),
+      'X-OC-Nonce': nonce,
+      'X-OC-Signature': signature
+    };
+  }
+
+  /**
+   * Create a signed transaction proof
+   */
+  createProof({ txid, from, to, amount, currency, memo }) {
+    const proof = {
+      txid,
+      issuer: this.ocid,
+      from,
+      to,
+      amount,
+      currency,
+      timestamp: Math.floor(Date.now() / 1000)
+    };
+    
+    if (memo) proof.memo = memo;
+
+    const signature = this.sign(canonicalize(proof));
+
+    return { proof, signature };
+  }
+
+  /**
+   * Sign a message
+   */
+  sign(message) {
+    const hash = Buffer.from(sha256(message), 'hex');
+    const { signature, recid } = secp256k1.ecdsaSign(hash, this.privateKey);
+    return Buffer.from(signature).toString('hex') + (recid === 0 ? '1b' : '1c');
+  }
+}
+
+/**
+ * Opencharge Verifier - Verify requests and proofs
+ */
+class OpenchargeVerifier {
+  constructor(registryContract) {
+    this.registry = registryContract;
+    this.metadataCache = new Map();
+    this.seenNonces = new Map();
+    this.processedProofs = new Set();
+  }
+
+  /**
+   * Verify an incoming request
+   */
+  async verifyRequest(request) {
+    const ocid = parseInt(request.headers['x-oc-id']);
+    const timestamp = parseInt(request.headers['x-oc-timestamp']);
+    const nonce = request.headers['x-oc-nonce'];
+    const signature = request.headers['x-oc-signature'];
+
+    // Check timestamp (±5 minutes)
+    const now = Math.floor(Date.now() / 1000);
+    if (Math.abs(now - timestamp) > 300) {
+      throw new Error('TIMESTAMP_EXPIRED');
+    }
+
+    // Check nonce
+    const nonceKey = `${ocid}:${nonce}`;
+    if (this.seenNonces.has(nonceKey)) {
+      throw new Error('NONCE_REUSED');
+    }
+    this.seenNonces.set(nonceKey, timestamp);
+    this.cleanOldNonces();
+
+    // Get public key
+    const metadata = await this.getMetadata(ocid);
+    const publicKey = Buffer.from('04' + metadata.publicKey, 'hex');
+
+    // Reconstruct and verify
+    const bodyHash = sha256(request.body ? JSON.stringify(request.body) : '');
+    const canonical = [
+      String(ocid),
+      String(timestamp),
+      nonce,
+      request.method,
+      request.path,
+      bodyHash
+    ].join('\n');
+
+    if (!this.verify(canonical, signature, publicKey)) {
+      throw new Error('INVALID_SIGNATURE');
+    }
+
+    return { ocid, metadata };
+  }
+
+  /**
+   * Verify a transaction proof
+   */
+  async verifyProof(proofEnvelope, acceptedOcids) {
+    const { proof, signature } = proofEnvelope;
+
+    // Check not already processed
+    if (this.processedProofs.has(proof.txid)) {
+      throw new Error('PROOF_ALREADY_PROCESSED');
+    }
+
+    // Check issuer is accepted
+    if (!acceptedOcids.includes(proof.issuer)) {
+      throw new Error('ISSUER_NOT_ACCEPTED');
+    }
+
+    // Get issuer's public key
+    const metadata = await this.getMetadata(proof.issuer);
+    const publicKey = Buffer.from('04' + metadata.publicKey, 'hex');
+
+    // Verify signature
+    if (!this.verify(canonicalize(proof), signature, publicKey)) {
+      throw new Error('PROOF_SIGNATURE_INVALID');
+    }
+
+    // Mark as processed
+    this.processedProofs.add(proof.txid);
+
+    return proof;
+  }
+
+  /**
+   * Verify a signature
+   */
+  verify(message, signatureHex, publicKey) {
+    const hash = Buffer.from(sha256(message), 'hex');
+    const signature = Buffer.from(signatureHex.slice(0, 128), 'hex');
+    return secp256k1.ecdsaVerify(signature, hash, publicKey);
+  }
+
+  /**
+   * Fetch and cache metadata
+   */
+  async getMetadata(ocid) {
+    const cached = this.metadataCache.get(ocid);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
+
+    const url = await this.registry.resolve(ocid);
+    const response = await fetch(url, { timeout: 5000 });
+    const metadata = await response.json();
+
+    this.metadataCache.set(ocid, {
+      data: metadata,
+      expiresAt: Date.now() + 300000 // 5 min
+    });
+
+    return metadata;
+  }
+
+  /**
+   * Clean old nonces
+   */
+  cleanOldNonces() {
+    const cutoff = Math.floor(Date.now() / 1000) - 600;
+    for (const [key, timestamp] of this.seenNonces) {
+      if (timestamp < cutoff) {
+        this.seenNonces.delete(key);
+      }
+    }
+  }
+}
+
+/**
+ * Utility: SHA-256 hash
+ */
+function sha256(data) {
+  return crypto.createHash('sha256').update(data).digest('hex');
+}
+
+/**
+ * Utility: Canonical JSON
+ */
+function canonicalize(obj) {
+  if (obj === null || typeof obj !== 'object') {
+    return JSON.stringify(obj);
+  }
+  if (Array.isArray(obj)) {
+    return '[' + obj.map(canonicalize).join(',') + ']';
+  }
+  const keys = Object.keys(obj).sort();
+  const pairs = keys.map(k => `"${k}":${canonicalize(obj[k])}`);
+  return '{' + pairs.join(',') + '}';
+}
+
+module.exports = { OpenchargeClient, OpenchargeVerifier, sha256, canonicalize };
+```
+
+### Usage Example
+
+```javascript
+const { OpenchargeClient, OpenchargeVerifier } = require('./opencharge');
+
+// PayPal's client
+const paypal = new OpenchargeClient(200, 'private_key_hex...');
+
+// Sign a payment request
+const headers = paypal.signRequest(
+  'POST',
+  '/opencharge/payment/request',
+  { recipient: '+256701234567', amount: '10000.00', currency: 'UGX' }
+);
+
+// Create a proof (for banks/settlement providers)
+const barclays = new OpenchargeClient(100, 'barclays_private_key...');
+const { proof, signature } = barclays.createProof({
+  txid: 'barclays_tx_456',
+  from: 200,
+  to: 300,
+  amount: '10000.00',
+  currency: 'UGX',
+  memo: 'Settlement for ORD-2024-001'
+});
+
+// MTN verifies the proof
+const mtn = new OpenchargeVerifier(registryContract);
+const acceptedIssuers = [100, 101, 102]; // From MTN's metadata
+
+try {
+  const verified = await mtn.verifyProof({ proof, signature }, acceptedIssuers);
+  console.log('Proof valid! Crediting merchant...');
+} catch (err) {
+  console.error('Proof rejected:', err.message);
+}
+```
+
+---
+
+## Appendix A: Test Vectors
+
+```
+═══════════════════════════════════════════════════════════════
+TEST VECTOR 1: Request Signature
+═══════════════════════════════════════════════════════════════
+
+Private Key: 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+
+OCID: 200
+Timestamp: 1706500000
+Nonce: req_test123
+Method: POST
+Path: /opencharge/payment/request
+Body: {"amount":"100.00","currency":"USD"}
+
+Body Hash (SHA256): d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592
+
+Canonical Message:
+200
+1706500000
+req_test123
+POST
+/opencharge/payment/request
+d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592
+
+Message Hash (SHA256): [compute]
+Expected Signature: [compute with test key]
+
+
+═══════════════════════════════════════════════════════════════
+TEST VECTOR 2: Proof Signature
+═══════════════════════════════════════════════════════════════
+
+Proof Object:
+{
+  "amount": "10000.00",
+  "currency": "UGX",
+  "from": 200,
+  "issuer": 100,
+  "timestamp": 1706500500,
+  "to": 300,
+  "txid": "test_tx_001"
+}
+
+Canonical (sorted, no whitespace):
+{"amount":"10000.00","currency":"UGX","from":200,"issuer":100,"timestamp":1706500500,"to":300,"txid":"test_tx_001"}
+
+Hash (SHA256): [compute]
+Expected Signature: [compute with issuer's test key]
+```
+
+---
+
+## Appendix B: Metadata Hosting Examples
+
+### Static File (S3, GitHub Pages, etc.)
+
+```
+https://your-bucket.s3.amazonaws.com/opencharge/metadata.json
+```
+
+### Dynamic Endpoint
+
+```python
+@app.route('/opencharge/metadata.json')
+def metadata():
+    return jsonify({
+        "opencharge": "0.1",
+        "name": "My Payment Service",
+        "publicKey": current_public_key(),  # Supports rotation
+        "endpoint": "https://api.myservice.com/opencharge",
+        # ...
+    })
+```
+
+### With Key Rotation Support
+
+```python
+@app.route('/opencharge/metadata.json')
+def metadata():
+    keys = get_active_keys()  # Could return multiple during rotation
+    return jsonify({
+        "opencharge": "0.1",
+        "publicKey": keys['primary'],
+        "previousKey": keys.get('previous'),  # Optional: grace period
+        "keyRotatedAt": keys.get('rotated_at'),
+        # ...
+    })
+```
+
+---
+
+_Opencharge Protocol Specification v0.1_ _Draft - Subject to Change_
