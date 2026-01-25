@@ -16,8 +16,8 @@
           {
             "group": "Getting started",
             "pages": [
-              "guides/getting-started/overview",
               "index",
+              "guides/getting-started/protocol",
               "quickstart",
               "development"
             ]

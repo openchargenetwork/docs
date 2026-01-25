@@ -1,65 +1,214 @@
 ---
-description: "Open Charge is primarily a protocol — not a wallet or API service."
-title: "Open Charge protocol"
+title: "Opencharge Overview"
+description: "Understanding the different components of the Opencharge ecosystem"
 ---
 
-## Introduction
+## Protocol, Labs, Foundation
 
-Open Charge is a **payment interoperability protocol** — a common language that defines how payment services communicate with each other. Think of it like HTTP for the web, but for payments. It doesn't move money; it standardizes how payment systems talk about moving money.
-
-The protocol is designed to be consumed by wallet service providers like Venmo, MetaMask, Alipay, Safewallet and others. Once implemented, these services can seamlessly accept payments from or send payments to any other Open Charge-compatible wallets.
-
-While end user developers can implement direct access to the protocol in their own systems, it's important to understand that wallet services retain full control over their transaction policies. They can still choose to allow transactions only with certain parties. Open Charge doesn't replace payment apps — it's simply a communication layer that any payment app can hook into.
+To begin, we should clarify the distinctions between the different areas of "Opencharge," some of which may confuse new users.
 
 <Columns cols={2}>
-  <Card title="A Simple Protocol" icon="pen-to-square" href="/development">
-    Stakeholders determine when to send, receive, or respond to messages. The protocol defines the language, not the behavior.
+  <Card title="Opencharge Labs" icon="flask">
+    The company responsible for developing the Opencharge protocol specifications, reference implementations, and developer tools. Labs drives the technical roadmap and builds products that showcase the protocol's capabilities.
   </Card>
-  <Card title="Communication Only" icon="palette" href="/essentials/settings">
-    Open Charge defines communication standards. Wallets and devices remain fully responsible for security, authentication, and verification.
+  <Card title="Opencharge Foundation" icon="building-columns">
+    A non-profit organization that supports the development and adoption of the Opencharge protocol. The Foundation manages grants, facilitates community governance, and coordinates among ecosystem stakeholders.
   </Card>
-  <Card title="Built for Developers" icon="map" href="/essentials/navigation">
-    Open Charge isn't meant for end users making payments. It's for development teams who want to expand their app's interoperability and reach.
+  <Card title="Opencharge Protocol" icon="scroll">
+    The core specification—a set of open, versioned standards that define how payment services, wallets, and hardware devices communicate. The protocol itself is not software but a technical specification that anyone can implement.
   </Card>
-  <Card title="Open Source at Its Core" icon="terminal" href="/api-reference/introduction">
-    All protocol contracts are open source and community-contributed. Anyone can propose edits and improvements to the code and documentation.
+  <Card title="Opencharge SDKs" icon="code">
+    Reference implementations and software development kits that help developers integrate the Opencharge protocol into their applications. These are maintained by Labs but open source for community contribution.
+  </Card>
+  <Card title="Opencharge Sandbox" icon="terminal">
+    A testing environment and web interface that allows developers to simulate and validate their Opencharge implementations. The sandbox is only one of many ways to test protocol compliance.
+  </Card>
+  <Card title="Opencharge Governance" icon="users">
+    A governance system for evolving the Opencharge protocol, enabling stakeholders—wallet providers, device manufacturers, and developers—to propose and vote on protocol changes.
   </Card>
 </Columns>
 
-## Hardware and Vending Device Support
+---
 
-Open Charge also defines a uniform communication API for hardware devices — vending machines, fuel pumps, EV chargers, parking meters, and more. This allows any Open Charge-compatible wallet or payment service to operate supported hardware through a standardized set of commands, without custom integrations for each manufacturer.
+## Opencharge Labs
 
-**Example:** Imagine MetaMask implements Open Charge merchant services, then MetaMask could potentially command an Open Charge-supported fuel pump to release 30 liters of fuel after confirming payment — without need for further development or manufacturer-specific integration by metamask or the merchant.
-
-This removes the need for merchants to hire dedicated development teams for each device or payment provider combination.
+Opencharge Labs is the for-profit company that initiated the Opencharge protocol and continues to drive its development. Labs is responsible for authoring new protocol versions, maintaining reference implementations, and building developer infrastructure.
 
 <Columns cols={2}>
-  <Card title="Cherry-Pick Features" icon="pen-fancy" href="/essentials/markdown">
-    Apps, services, and devices can choose which protocol features to implement or block, and publish their capabilities so peers know what to expect.
+  <Card title="Protocol Development" icon="code-branch" href="/labs/protocol">
+    Authors and maintains the official Opencharge specification documents, ensuring technical rigor and backwards compatibility.
   </Card>
-  <Card title="Freedom to Choose Partners" icon="code" href="/essentials/code">
-    Apps, services, and devices can accept or reject transaction handshakes at will. The protocol facilitates communication but enforces no partnerships.
+  <Card title="Reference SDKs" icon="box" href="/labs/sdks">
+    Builds and maintains open-source SDKs in multiple languages (JavaScript, Python, Go, Rust) to accelerate developer adoption.
   </Card>
-  <Card title="Controlled Device Access" icon="image" href="/essentials/images">
-    The protocol defines commands for payment and delivery workflows only. It doesn't grant unrestricted access or enforce rules on device behavior.
+  <Card title="Developer Tools" icon="wrench" href="/labs/tools">
+    Creates testing tools, validators, and debugging utilities that help implementers and developers to  test and verify protocol compliance.
   </Card>
-  <Card title="Status Broadcasts" icon="recycle" href="/essentials/reusable-snippets">
-    Devices and services can optionally broadcast status information. This public data can power indexes, maps, availability dashboards, and more.
+  <Card title="Commercial Products" icon="rocket" href="/labs/products">
+    Builds commercial products and services on top of the protocol, demonstrating its capabilities and generating sustainable revenue.
   </Card>
 </Columns>
 
-## Key Principles
+**Key Responsibilities:**
 
-| Principle            | Description                                                                                  |
-| -------------------- | -------------------------------------------------------------------------------------------- |
-| **Interoperability** | Any compliant wallet can communicate with any other compliant wallet or device.              |
-| **Sovereignty**      | Each participant retains full control over their security, policies, and partnerships.       |
-| **Extensibility**    | The protocol can grow through community proposals without breaking existing implementations. |
-| **Transparency**     | Capabilities and restrictions are published openly, so participants know what to expect.     |
+- Drafting new protocol specifications and extensions
+- Maintaining official reference implementations
+- Providing technical leadership and support
+- Building infrastructure for the ecosystem
 
-## Need Inspiration?
+---
 
-<Card title="See How Others Are Connecting to Open Charge" icon="stars" href="https://mintlify.com/customers">
-  Browse our showcase of services and devices implementing the Open Charge protocol.
+## Opencharge Foundation
+
+The Opencharge Foundation is an independent non-profit organization established to support the long-term health of the protocol ecosystem. The Foundation operates separately from Labs to ensure community interests are represented.
+
+<Columns cols={2}>
+  <Card title="Grants Program" icon="hand-holding-dollar" href="/foundation/grants">
+    Funds developers, researchers, and organizations building on or contributing to the Opencharge ecosystem.
+  </Card>
+  <Card title="Governance Facilitation" icon="scale-balanced" href="/foundation/governance">
+    Coordinates the governance process, ensuring all stakeholders have a voice in protocol evolution.
+  </Card>
+  <Card title="Ecosystem Growth" icon="seedling" href="/foundation/ecosystem">
+    Promotes adoption through events, partnerships, educational content, and developer relations.
+  </Card>
+  <Card title="Certification Program" icon="certificate" href="/foundation/certification">
+    Manages the compliance certification program that verifies implementations meet protocol standards.
+  </Card>
+</Columns>
+
+**Key Responsibilities:**
+
+- Managing the grants budget and funding allocation
+- Facilitating governance proposals and voting
+- Organizing community events and working groups
+- Maintaining neutrality between competing implementations
+
+---
+
+## Opencharge Protocol
+
+The protocol itself is a set of technical specifications—not software. It defines the message formats, communication patterns, and behavioral contracts that enable interoperability between payment systems.
+
+<Columns cols={2}>
+  <Card title="Core Specification" icon="file-code" href="/protocol/core">
+    Defines fundamental message types, authentication flows, and transaction lifecycles.
+  </Card>
+  <Card title="Wallet Extension" icon="wallet" href="/protocol/wallet">
+    Specifications for wallet-to-wallet communication, including payment requests, confirmations, and receipts.
+  </Card>
+  <Card title="Device Extension" icon="microchip" href="/protocol/device">
+    Specifications for hardware device integration, including vending machines, point-of-sale terminals, and IoT devices.
+  </Card>
+  <Card title="Discovery Extension" icon="radar" href="/protocol/discovery">
+    Specifications for service discovery, capability broadcasting, and network registration.
+  </Card>
+</Columns>
+
+**Protocol Principles:**
+
+- **Versioned:** All specifications are versioned to ensure backwards compatibility
+- **Modular:** Extensions can be adopted independently based on use case
+- **Permissionless:** Anyone can implement the protocol without approval
+- **Neutral:** The protocol does not favor any particular wallet, currency, or provider
+
+---
+
+## Opencharge Governance
+
+Governance enables the community to evolve the protocol over time. Unlike centralized standards bodies, Opencharge governance is designed to be transparent, inclusive, and community-driven.
+
+<Columns cols={2}>
+  <Card title="Proposal Process" icon="lightbulb" href="/governance/proposals">
+    Anyone can submit an Opencharge Improvement Proposal (OCIP) to suggest changes or additions to the protocol.
+  </Card>
+  <Card title="Working Groups" icon="people-group" href="/governance/working-groups">
+    Specialized groups focus on specific areas like security, hardware integration, and regional compliance.
+  </Card>
+  <Card title="Voting" icon="check-to-slot" href="/governance/voting">
+    Stakeholders vote on proposals after community discussion and technical review periods.
+  </Card>
+  <Card title="Implementation" icon="gears" href="/governance/implementation">
+    Approved proposals are incorporated into official specifications and reference implementations.
+  </Card>
+</Columns>
+
+### Governance Participants
+
+| Stakeholder              | Role                                                       |
+| ------------------------ | ---------------------------------------------------------- |
+| **Wallet Providers**     | Vote on proposals affecting wallet-to-wallet communication |
+| **Device Manufacturers** | Vote on proposals affecting hardware integration           |
+| **Developers**           | Contribute to discussions and submit improvement proposals |
+| **Foundation**           | Facilitates process, does not vote on technical matters    |
+| **Labs**                 | Provides technical guidance, one vote among many           |
+
+---
+
+## How They Work Together
+
+The separation of concerns ensures healthy checks and balances within the ecosystem.
+
+<img
+  src="/images/ocn-structure.jpg"
+  alt="opencharge network structure"
+  className="rounded-lg"
+  title=""
+/>
+
+<Columns cols={2}>
+  <Card title="Labs → Foundation" icon="arrow-right">
+    Labs contributes funding and technical resources to the Foundation, but the Foundation operates independently.
+  </Card>
+  <Card title="Foundation → Governance" icon="arrow-right">
+    The Foundation facilitates governance but does not control it. Stakeholders make decisions collectively.
+  </Card>
+  <Card title="Governance → Protocol" icon="arrow-right">
+    Approved governance proposals go through a voting  process to become official protocol specifications.
+  </Card>
+  <Card title="Labs → Protocol" icon="arrow-right">
+    Labs authors specifications but cannot unilaterally change the protocol without governance approval.
+  </Card>
+</Columns>
+
+---
+
+## Why This Structure?
+
+<Card title="Lessons from Uniswap and other protocols" icon="graduation-cap">
+  This structure draws inspiration from successful decentralized protocols like Uniswap, which separates Labs (development), Foundation (ecosystem support), Protocol (smart contracts), and Governance (token holders). For Opencharge, we adapt this model for a communication protocol rather than a DeFi protocol.
 </Card>
+
+<Columns cols={2}>
+  <Card title="Decentralization" icon="circle-nodes">
+    No single entity controls the protocol. Labs can drive development, but governance has final say.
+  </Card>
+  <Card title="Sustainability" icon="leaf">
+    Labs generates revenue through commercial products, while funding continued development without relying solely on grants.
+  </Card>
+  <Card title="Neutrality" icon="scale-balanced">
+    The Foundation ensures the protocol remains neutral and doesn't favor any particular implementation.
+  </Card>
+  <Card title="Legitimacy" icon="shield-check">
+    Community governance gives the protocol legitimacy and encourages adoption by major players.
+  </Card>
+</Columns>
+
+---
+
+## Get Involved
+
+<Columns cols={2}>
+  <Card title="Implement the Protocol" icon="code" href="/quickstart">
+    Start building with Opencharge SDKs and reference implementations.
+  </Card>
+  <Card title="Join Governance" icon="comments" href="/governance">
+    Participate in discussions and vote on the future of the protocol.
+  </Card>
+  <Card title="Apply for Grants" icon="file-signature" href="/foundation/grants">
+    Get funding for your Opencharge project from the Foundation.
+  </Card>
+  <Card title="Contribute" icon="code-pull-request" href="https://github.com/opencharge">
+    Submit improvements to specifications, SDKs, or documentation.
+  </Card>
+</Columns>
