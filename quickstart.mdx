@@ -3,7 +3,7 @@ description: "Opencharge Protocol Specification v0.1"
 title: "Protocol specification"
 ---
 
-## Abstract 
+## Abstract
 
 Opencharge is a decentralized protocol for payment service interoperability and verifiable settlement. It enables any payment service to authenticate requests and provide cryptographic proof of completed transfers—creating a trust network where signed receipts flow between parties to complete cross-platform payments.
 
@@ -635,7 +635,7 @@ STEP 3: PayPal instructs Barclays to pay MTN
     PayPal                                              Barclays
        │                                                    │
        │  POST /transfer                                    │
-       │  { from: { ocid: 100 },                        │
+       │  { from: { ocid: 100, "reference": "PAYPAL-RESERVES-UG" },                        │
        │    to: { ocid: 300 },                              │
        │    amount: "10000.00", currency: "UGX" }           │
        │ ──────────────────────────────────────────────────►│
