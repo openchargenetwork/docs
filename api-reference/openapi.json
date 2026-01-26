@@ -38,11 +38,7 @@
                   "capabilities": ["payment.receive", "payment.settle"],
                   "settlement": {
                     "currencies": ["UGX", "USD"],
-                    "accepts": [
-                      { "ocid": 100, "name": "Barclays Bank Uganda" },
-                      { "ocid": 101, "name": "Stanbic Bank Uganda" },
-                      { "ocid": 102, "name": "USDT Router" }
-                    ]
+                    "accepts": [100, 101, 102]
                   },
                   "contact": "integrations@mtn.co.ug"
                 }
@@ -71,10 +67,7 @@
                   "capabilities": ["payment.receive", "payment.settle"],
                   "settlement": {
                     "currencies": ["UGX", "USD"],
-                    "accepts": [
-                      { "ocid": 100, "name": "Barclays Bank Uganda" },
-                      { "ocid": 101, "name": "Stanbic Bank Uganda" }
-                    ]
+                    "accepts": [100, 101]
                   }
                 }
               }
@@ -127,10 +120,7 @@
                   "currency": "UGX",
                   "expiresAt": 1706503600,
                   "settlement": {
-                    "accepts": [
-                      { "ocid": 100, "name": "Barclays Bank Uganda" },
-                      { "ocid": 101, "name": "Stanbic Bank Uganda" }
-                    ]
+                    "accepts": [100, 101]
                   }
                 }
               }
@@ -486,7 +476,7 @@
               "accepts": {
                 "type": "array",
                 "items": {
-                  "$ref": "#/components/schemas/AcceptedIssuer"
+                  "type": "integer"
                 },
                 "description": "OCIDs accepted for settlement proofs"
               }
@@ -536,23 +526,9 @@
           "accepts": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/AcceptedIssuer"
+              "type": "integer"
             },
             "description": "OCIDs accepted for settlement"
-          }
-        }
-      },
-      "AcceptedIssuer": {
-        "type": "object",
-        "required": ["ocid"],
-        "properties": {
-          "ocid": {
-            "type": "integer",
-            "description": "OCID of accepted settlement source"
-          },
-          "name": {
-            "type": "string",
-            "description": "Human-readable name of the issuer"
           }
         }
       },
