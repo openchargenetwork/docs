@@ -23,6 +23,36 @@ description: "Standard error codes and response format for the Opencharge protoc
 | `CAPABILITY_NOT_SUPPORTED` | 400  | Service doesn't support requested operation |
 | `RATE_LIMITED`             | 429  | Too many requests                           |
 
+## Connection Refused (403)
+
+Services may refuse connections at their discretion without providing a specific reason. This is distinct from authentication failures (401) or validation errors (400).
+
+A 403 response during handshake means the service has chosen not to establish a connection. The response body is optional and may be empty.
+
+```json
+{
+  "error": {
+    "code": "CONNECTION_REFUSED",
+    "message": "Connection not accepted"
+  }
+}
+```
+
+Common reasons a service might refuse a connection include:
+
+- Business policy decisions
+- Compliance or regulatory requirements
+- Geographic restrictions
+- Internal blocklists
+
+Services are not required to disclose why a connection was refused.
+
+### Handling refused connections
+
+- Do not retry immediately — the refusal is intentional
+- Check your metadata is correctly published and discoverable
+- Contact the service operator through out-of-band channels if you believe the refusal is in error
+
 ## Error Response Format
 
 ```json
