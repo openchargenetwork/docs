@@ -258,7 +258,7 @@
       "post": {
         "operationId": "createTransfer",
         "summary": "Create transfer",
-        "description": "Create a transfer between accounts. Used payment gateways and settlement providers to move funds and generate signed proofs.",
+        "description": "Create a transfer between accounts. Used by payment gateways and settlement providers to move funds and generate signed proofs.",
         "parameters": [
           { "$ref": "#/components/parameters/X-OC-ID" },
           { "$ref": "#/components/parameters/X-OC-Timestamp" },
