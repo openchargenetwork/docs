@@ -1,54 +1,143 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "OpenAPI Plant Store",
-    "description": "A sample API that uses a plant store as an example to demonstrate features in the OpenAPI specification",
+    "title": "Opencharge API",
+    "description": "API specification for the Opencharge protocol - enabling decentralized payment interoperability and verifiable settlement",
+    "version": "0.1.0",
     "license": {
       "name": "MIT"
-    },
-    "version": "1.0.0"
+    }
   },
   "servers": [
     {
-      "url": "http://sandbox.mintlify.com"
-    }
-  ],
-  "security": [
-    {
-      "bearerAuth": []
+      "url": "https://api.example.com/opencharge",
+      "description": "Example Opencharge endpoint"
     }
   ],
   "paths": {
-    "/plants": {
+    "/metadata.json": {
       "get": {
-        "description": "Returns all plants from the system that the user has access to",
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "The maximum number of results to return",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
-            }
-          }
-        ],
+        "operationId": "getMetadata",
+        "summary": "Get OCID metadata",
+        "description": "Returns the service's metadata including public key, endpoint URL, capabilities, and settlement preferences. This endpoint is hosted at the URL registered in the Router Registry smart contract. Other services fetch this to discover how to interact with your service and verify your signatures.",
         "responses": {
           "200": {
-            "description": "Plant response",
+            "description": "OCID metadata document",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Plant"
+                  "$ref": "#/components/schemas/OCIDMetadata"
+                },
+                "example": {
+                  "opencharge": "0.1",
+                  "name": "MTN Mobile Money Uganda",
+                  "description": "Mobile money service for Uganda",
+                  "icon": "https://mtn.co.ug/icon.png",
+                  "publicKey": "a34b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b",
+                  "endpoint": "https://api.mtn.co.ug/opencharge",
+                  "capabilities": ["payment.receive", "settlement.accept"],
+                  "settlement": {
+                    "currencies": ["UGX", "USD"],
+                    "accepts": [
+                      { "ocid": 100, "name": "Barclays Bank Uganda" },
+                      { "ocid": 101, "name": "Stanbic Bank Uganda" },
+                      { "ocid": 102, "name": "USDT Router" }
+                    ]
+                  },
+                  "contact": "integrations@mtn.co.ug"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/capabilities": {
+      "get": {
+        "operationId": "getCapabilities",
+        "summary": "Get service capabilities",
+        "description": "Discover a service's capabilities and settlement preferences. Use this to find out which settlement sources a service accepts before initiating a payment.",
+        "responses": {
+          "200": {
+            "description": "Service capabilities and settlement preferences",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Capabilities"
+                },
+                "example": {
+                  "ocid": 300,
+                  "name": "MTN Mobile Money Uganda",
+                  "capabilities": ["payment.receive", "settlement.accept"],
+                  "settlement": {
+                    "currencies": ["UGX", "USD"],
+                    "accepts": [
+                      { "ocid": 100, "name": "Barclays Bank Uganda" },
+                      { "ocid": 101, "name": "Stanbic Bank Uganda" }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/payment/request": {
+      "post": {
+        "operationId": "createPaymentRequest",
+        "summary": "Create payment request",
+        "description": "Initiate a payment request to a recipient. The response will indicate which settlement sources are accepted to complete the payment.",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-OC-ID" },
+          { "$ref": "#/components/parameters/X-OC-Timestamp" },
+          { "$ref": "#/components/parameters/X-OC-Nonce" },
+          { "$ref": "#/components/parameters/X-OC-Signature" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentRequest"
+              },
+              "example": {
+                "to": 500,
+                "amount": "10000.00",
+                "currency": "UGX",
+                "reference": "ORD-2024-001",
+                "memo": "Payment for electronics",
+                "expiresAt": 1706503600
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Payment request created, awaiting settlement",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentRequestResponse"
+                },
+                "example": {
+                  "status": "pending_settlement",
+                  "txid": "momo_tx_789",
+                  "amount": "10000.00",
+                  "currency": "UGX",
+                  "expiresAt": 1706503600,
+                  "settlement": {
+                    "accepts": [
+                      { "ocid": 100, "name": "Barclays Bank Uganda" },
+                      { "ocid": 101, "name": "Stanbic Bank Uganda" }
+                    ]
                   }
                 }
               }
             }
           },
           "400": {
-            "description": "Unexpected error",
+            "description": "Invalid request",
             "content": {
               "application/json": {
                 "schema": {
@@ -56,35 +145,9 @@
                 }
               }
             }
-          }
-        }
-      },
-      "post": {
-        "description": "Creates a new plant in the store",
-        "requestBody": {
-          "description": "Plant to add to the store",
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/NewPlant"
-              }
-            }
           },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "plant response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Plant"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "unexpected error",
+          "401": {
+            "description": "Authentication failed",
             "content": {
               "application/json": {
                 "schema": {
@@ -96,28 +159,90 @@
         }
       }
     },
-    "/plants/{id}": {
-      "delete": {
-        "description": "Deletes a single plant based on the ID supplied",
+    "/payment/settle": {
+      "post": {
+        "operationId": "settlePayment",
+        "summary": "Settle a payment",
+        "description": "Submit a settlement proof to complete a pending payment. The proof must be signed by an issuer that the recipient accepts.",
         "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "ID of plant to delete",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
+          { "$ref": "#/components/parameters/X-OC-ID" },
+          { "$ref": "#/components/parameters/X-OC-Timestamp" },
+          { "$ref": "#/components/parameters/X-OC-Nonce" },
+          { "$ref": "#/components/parameters/X-OC-Signature" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettleRequest"
+              },
+              "example": {
+                "txid": "momo_tx_789",
+                "proof": {
+                  "txid": "barclays_tx_456",
+                  "issuer": 100,
+                  "from": 200,
+                  "to": 300,
+                  "amount": "10000.00",
+                  "currency": "UGX",
+                  "timestamp": 1706500500,
+                  "memo": "Settlement for ORD-2024-001"
+                },
+                "signature": "a1b2c3d4e5f6..."
+              }
             }
           }
-        ],
+        },
         "responses": {
-          "204": {
-            "description": "Plant deleted",
-            "content": {}
+          "200": {
+            "description": "Payment settled successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettleResponse"
+                },
+                "example": {
+                  "status": "completed",
+                  "txid": "momo_tx_789",
+                  "completedAt": 1706500600,
+                  "proof": {
+                    "txid": "momo_tx_789",
+                    "issuer": 300,
+                    "from": 200,
+                    "to": 400,
+                    "amount": "10000.00",
+                    "currency": "UGX",
+                    "timestamp": 1706500600,
+                    "memo": "Payment for electronics"
+                  },
+                  "signature": "d4e5f6..."
+                }
+              }
+            }
           },
           "400": {
-            "description": "unexpected error",
+            "description": "Invalid proof or settlement rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Transaction not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Transaction expired",
             "content": {
               "application/json": {
                 "schema": {
@@ -128,89 +253,592 @@
           }
         }
       }
-    }
-  },
-  "webhooks": {
-    "/plant/webhook": {
+    },
+    "/transfer": {
       "post": {
-        "description": "Information about a new plant added to the store",
+        "operationId": "executeTransfer",
+        "summary": "Execute a transfer",
+        "description": "Execute a transfer between accounts. Used by banks and settlement providers to move funds and generate signed proofs.",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-OC-ID" },
+          { "$ref": "#/components/parameters/X-OC-Timestamp" },
+          { "$ref": "#/components/parameters/X-OC-Nonce" },
+          { "$ref": "#/components/parameters/X-OC-Signature" }
+        ],
         "requestBody": {
-          "description": "Plant added to the store",
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NewPlant"
+                "$ref": "#/components/schemas/TransferRequest"
+              },
+              "example": {
+                "from": {
+                  "reference": "PAYPAL-RESERVES-UG"
+                },
+                "to": {
+                  "ocid": 300,
+                  "reference": "MTN-SETTLEMENTS"
+                },
+                "amount": "10000.00",
+                "currency": "UGX",
+                "memo": "Settlement for momo_tx_789"
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Return a 200 status to indicate that the data was received successfully"
+            "description": "Transfer completed with signed proof",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransferResponse"
+                },
+                "example": {
+                  "status": "completed",
+                  "proof": {
+                    "txid": "barclays_tx_456",
+                    "issuer": 100,
+                    "from": 200,
+                    "to": 300,
+                    "amount": "10000.00",
+                    "currency": "UGX",
+                    "timestamp": 1706500500,
+                    "memo": "Settlement for momo_tx_789"
+                  },
+                  "signature": "a1b2c3..."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient funds",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/verify/{txid}": {
+      "get": {
+        "operationId": "verifyTransaction",
+        "summary": "Verify a transaction",
+        "description": "Optional endpoint for additional verification of a transaction. Returns the transaction details if it exists and is confirmed.",
+        "parameters": [
+          {
+            "name": "txid",
+            "in": "path",
+            "required": true,
+            "description": "The transaction ID to verify",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transaction verified",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyResponse"
+                },
+                "example": {
+                  "txid": "barclays_tx_456",
+                  "status": "confirmed",
+                  "issuer": 100,
+                  "from": 200,
+                  "to": 300,
+                  "amount": "10000.00",
+                  "currency": "UGX",
+                  "timestamp": 1706500500
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Transaction not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
     }
   },
   "components": {
+    "parameters": {
+      "X-OC-ID": {
+        "name": "X-OC-ID",
+        "in": "header",
+        "required": true,
+        "description": "Sender's OCID (Opencharge ID)",
+        "schema": {
+          "type": "string"
+        },
+        "example": "200"
+      },
+      "X-OC-Timestamp": {
+        "name": "X-OC-Timestamp",
+        "in": "header",
+        "required": true,
+        "description": "Unix timestamp in seconds",
+        "schema": {
+          "type": "string"
+        },
+        "example": "1706500000"
+      },
+      "X-OC-Nonce": {
+        "name": "X-OC-Nonce",
+        "in": "header",
+        "required": true,
+        "description": "Unique request identifier for replay protection",
+        "schema": {
+          "type": "string"
+        },
+        "example": "req_abc123"
+      },
+      "X-OC-Signature": {
+        "name": "X-OC-Signature",
+        "in": "header",
+        "required": true,
+        "description": "secp256k1 ECDSA signature of the canonical request",
+        "schema": {
+          "type": "string"
+        },
+        "example": "a1b2c3d4...7f1b"
+      }
+    },
     "schemas": {
-      "Plant": {
-        "required": [
-          "name"
-        ],
+      "OCIDMetadata": {
         "type": "object",
+        "required": ["opencharge", "name", "publicKey", "endpoint", "capabilities"],
+        "description": "Metadata document hosted at the URL registered in the Router Registry. Contains everything other services need to interact with your OCID.",
         "properties": {
-          "name": {
-            "description": "The name of the plant",
-            "type": "string"
+          "opencharge": {
+            "type": "string",
+            "description": "Protocol version",
+            "example": "0.1"
           },
-          "tag": {
-            "description": "Tag to specify the type",
-            "type": "string"
+          "name": {
+            "type": "string",
+            "description": "Human-readable service name",
+            "example": "MTN Mobile Money Uganda"
+          },
+          "description": {
+            "type": "string",
+            "description": "Service description"
+          },
+          "icon": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL to service logo/icon"
+          },
+          "publicKey": {
+            "type": "string",
+            "pattern": "^[a-fA-F0-9]{128}$",
+            "description": "secp256k1 public key (128 hex chars, uncompressed format without 04 prefix)"
+          },
+          "endpoint": {
+            "type": "string",
+            "format": "uri",
+            "description": "Base URL for Opencharge API endpoints"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["payment.send", "payment.receive", "settlement.accept", "settlement.provide", "transfer.execute"]
+            },
+            "description": "List of supported operations"
+          },
+          "settlement": {
+            "type": "object",
+            "description": "Settlement configuration (required if service accepts settlement)",
+            "properties": {
+              "currencies": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Supported ISO 4217 currency codes"
+              },
+              "accepts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AcceptedIssuer"
+                },
+                "description": "OCIDs accepted for settlement proofs"
+              }
+            }
+          },
+          "contact": {
+            "type": "string",
+            "description": "Integration support contact (email or URL)"
           }
         }
       },
-      "NewPlant": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/Plant"
+      "Capabilities": {
+        "type": "object",
+        "required": ["ocid", "name", "capabilities"],
+        "properties": {
+          "ocid": {
+            "type": "integer",
+            "description": "The service's Opencharge ID"
           },
-          {
-            "required": [
-              "id"
-            ],
+          "name": {
+            "type": "string",
+            "description": "Human-readable service name"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["payment.send", "payment.receive", "settlement.accept", "settlement.provide", "transfer.execute"]
+            },
+            "description": "List of supported operations"
+          },
+          "settlement": {
+            "$ref": "#/components/schemas/SettlementInfo"
+          }
+        }
+      },
+      "SettlementInfo": {
+        "type": "object",
+        "properties": {
+          "currencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Supported ISO 4217 currency codes"
+          },
+          "accepts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AcceptedIssuer"
+            },
+            "description": "OCIDs accepted for settlement"
+          }
+        }
+      },
+      "AcceptedIssuer": {
+        "type": "object",
+        "required": ["ocid"],
+        "properties": {
+          "ocid": {
+            "type": "integer",
+            "description": "OCID of accepted settlement source"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name of the issuer"
+          }
+        }
+      },
+      "PaymentRequest": {
+        "type": "object",
+        "required": ["to", "amount", "currency"],
+        "properties": {
+          "to": {
+            "type": "integer",
+            "description": "Recipient's OCID (Opencharge ID). The receiving service maps this to their internal account."
+          },
+          "amount": {
+            "type": "string",
+            "description": "Payment amount as decimal string"
+          },
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217 currency code"
+          },
+          "reference": {
+            "type": "string",
+            "description": "External reference ID"
+          },
+          "memo": {
+            "type": "string",
+            "description": "Human-readable payment description"
+          },
+          "expiresAt": {
+            "type": "integer",
+            "description": "Unix timestamp when the payment request expires"
+          }
+        }
+      },
+      "PaymentRequestResponse": {
+        "type": "object",
+        "required": ["status", "txid", "amount", "currency"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["pending_settlement", "completed", "expired", "failed"],
+            "description": "Current status of the payment"
+          },
+          "txid": {
+            "type": "string",
+            "description": "Unique transaction ID"
+          },
+          "amount": {
+            "type": "string",
+            "description": "Payment amount"
+          },
+          "currency": {
+            "type": "string",
+            "description": "Currency code"
+          },
+          "expiresAt": {
+            "type": "integer",
+            "description": "Unix timestamp when settlement window closes"
+          },
+          "settlement": {
+            "$ref": "#/components/schemas/SettlementInfo"
+          }
+        }
+      },
+      "TransactionProof": {
+        "type": "object",
+        "required": ["txid", "issuer", "from", "to", "amount", "currency", "timestamp"],
+        "properties": {
+          "txid": {
+            "type": "string",
+            "description": "Unique transaction ID from issuer"
+          },
+          "issuer": {
+            "type": "integer",
+            "description": "OCID of service that executed the transfer"
+          },
+          "from": {
+            "type": "integer",
+            "description": "OCID of sender"
+          },
+          "to": {
+            "type": "integer",
+            "description": "OCID of recipient"
+          },
+          "amount": {
+            "type": "string",
+            "description": "Amount as decimal string"
+          },
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217 currency code"
+          },
+          "timestamp": {
+            "type": "integer",
+            "description": "Unix timestamp when transfer completed"
+          },
+          "memo": {
+            "type": "string",
+            "description": "Human-readable description"
+          }
+        }
+      },
+      "SettleRequest": {
+        "type": "object",
+        "required": ["txid", "proof", "signature"],
+        "properties": {
+          "txid": {
+            "type": "string",
+            "description": "Transaction ID of the pending payment"
+          },
+          "proof": {
+            "$ref": "#/components/schemas/TransactionProof"
+          },
+          "signature": {
+            "type": "string",
+            "description": "secp256k1 signature of the canonical proof JSON"
+          }
+        }
+      },
+      "SettleResponse": {
+        "type": "object",
+        "required": ["status", "txid"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["completed"],
+            "description": "Settlement status"
+          },
+          "txid": {
+            "type": "string",
+            "description": "Transaction ID"
+          },
+          "completedAt": {
+            "type": "integer",
+            "description": "Unix timestamp when settlement completed"
+          },
+          "proof": {
+            "$ref": "#/components/schemas/TransactionProof"
+          },
+          "signature": {
+            "type": "string",
+            "description": "Signed proof from the recipient service"
+          }
+        }
+      },
+      "TransferRequest": {
+        "type": "object",
+        "required": ["from", "to", "amount", "currency"],
+        "properties": {
+          "from": {
             "type": "object",
             "properties": {
-              "id": {
-                "description": "Identification number of the plant",
+              "ocid": {
                 "type": "integer",
-                "format": "int64"
+                "description": "Sender's OCID"
+              },
+              "reference": {
+                "type": "string",
+                "description": "Internal account reference"
+              }
+            }
+          },
+          "to": {
+            "type": "object",
+            "required": ["ocid"],
+            "properties": {
+              "ocid": {
+                "type": "integer",
+                "description": "Recipient's OCID"
+              },
+              "reference": {
+                "type": "string",
+                "description": "Internal account reference"
+              }
+            }
+          },
+          "amount": {
+            "type": "string",
+            "description": "Transfer amount as decimal string"
+          },
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217 currency code"
+          },
+          "memo": {
+            "type": "string",
+            "description": "Human-readable description"
+          }
+        }
+      },
+      "TransferResponse": {
+        "type": "object",
+        "required": ["status", "proof", "signature"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["completed"],
+            "description": "Transfer status"
+          },
+          "proof": {
+            "$ref": "#/components/schemas/TransactionProof"
+          },
+          "signature": {
+            "type": "string",
+            "description": "secp256k1 signature of the proof"
+          }
+        }
+      },
+      "VerifyResponse": {
+        "type": "object",
+        "required": ["txid", "status"],
+        "properties": {
+          "txid": {
+            "type": "string",
+            "description": "Transaction ID"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["confirmed", "pending", "failed"],
+            "description": "Transaction status"
+          },
+          "issuer": {
+            "type": "integer",
+            "description": "OCID of issuer"
+          },
+          "from": {
+            "type": "integer",
+            "description": "OCID of sender"
+          },
+          "to": {
+            "type": "integer",
+            "description": "OCID of recipient"
+          },
+          "amount": {
+            "type": "string",
+            "description": "Amount"
+          },
+          "currency": {
+            "type": "string",
+            "description": "Currency code"
+          },
+          "timestamp": {
+            "type": "integer",
+            "description": "Completion timestamp"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Error code",
+                "enum": [
+                  "INVALID_SIGNATURE",
+                  "TIMESTAMP_EXPIRED",
+                  "NONCE_REUSED",
+                  "UNKNOWN_OCID",
+                  "METADATA_UNAVAILABLE",
+                  "INVALID_PROOF",
+                  "PROOF_SIGNATURE_INVALID",
+                  "ISSUER_NOT_ACCEPTED",
+                  "AMOUNT_MISMATCH",
+                  "CURRENCY_MISMATCH",
+                  "TXID_NOT_FOUND",
+                  "TRANSACTION_EXPIRED",
+                  "INSUFFICIENT_FUNDS",
+                  "CAPABILITY_NOT_SUPPORTED",
+                  "RATE_LIMITED"
+                ]
+              },
+              "message": {
+                "type": "string",
+                "description": "Human-readable error message"
+              },
+              "details": {
+                "type": "object",
+                "description": "Additional error context"
               }
             }
           }
-        ]
-      },
-      "Error": {
-        "required": [
-          "error",
-          "message"
-        ],
-        "type": "object",
-        "properties": {
-          "error": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "message": {
-            "type": "string"
-          }
         }
-      }
-    },
-    "securitySchemes": {
-      "bearerAuth": {
-        "type": "http",
-        "scheme": "bearer"
       }
     }
   }

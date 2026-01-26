@@ -31,9 +31,12 @@ STEP 2: PayPal initiates payment request
     PayPal                                              MTN MOMO
        │                                                    │
        │  POST /payment/request                             │
-       │  { recipient: "+256701234567",                     │
+       │  { to: 500,                                        │
        │    amount: "10000.00", currency: "UGX" }           │
        │ ──────────────────────────────────────────────────►│
+       │                                                    │
+       │           [MTN looks up OCID 500 internally        │
+       │            → maps to merchant phone number]        │
        │                                                    │
        │  { status: "pending_settlement",                   │
        │    txid: "momo_tx_789",                            │
@@ -42,6 +45,7 @@ STEP 2: PayPal initiates payment request
        │                                                    │
 
     MTN has created a pending transaction. Now waiting for settlement.
+    (OCID 500 is the merchant - MTN maps this to their phone number internally)
 
 
 STEP 3: PayPal instructs Barclays to pay MTN

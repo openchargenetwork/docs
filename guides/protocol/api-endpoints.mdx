@@ -26,13 +26,13 @@ Discover a service's capabilities and settlement preferences.
 
 ## POST /payment/request
 
-Initiate a payment request.
+Initiate a payment request to a merchant OCID.
 
 **Request:**
 
 ```json
 {
-  "recipient": "+256701234567",
+  "to": 500,
   "amount": "10000.00",
   "currency": "UGX",
   "reference": "ORD-2024-001",
@@ -40,6 +40,8 @@ Initiate a payment request.
   "expiresAt": 1706503600
 }
 ```
+
+The `to` field is the merchant's OCID. The receiving service (MTN in this example) maps this OCID to the merchant's internal account.
 
 **Response (awaiting settlement):**
 

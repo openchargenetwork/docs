@@ -101,21 +101,22 @@ The merchant's OCID and key pair replace per-service API credentials. One identi
 
 **Q: Does every merchant need an OCID?**
 
-No. The protocol doesn't force this structure. Services have flexibility:
+Yes, for Opencharge protocol payments. The OCID is the merchant's identity in the protocol:
 
-| Approach               | Description                                                 | Use Case                                     |
-| ---------------------- | ----------------------------------------------------------- | -------------------------------------------- |
-| **Merchant OCID**      | Merchant registers own OCID                                 | Businesses wanting universal payment address |
-| **Provider reference** | Provider uses internal reference (phone number, account ID) | Existing customers, minimal friction         |
-| **Hybrid**             | Provider offers OCID registration as optional upgrade       | Gradual adoption                             |
+- All payment requests use `to: <merchant_ocid>`
+- All transaction proofs reference the merchant's OCID
+- The merchant receives signed proofs they can verify
 
-For example, MTN MOMO can continue using phone numbers for most merchants:
+The merchant registers ONE OCID and uses it everywhere. Each service provider (MTN, PayPal, Barclays) maps the merchant's OCID to their internal account:
 
-```json
-{ "recipient": "+256701234567", "amount": "10000.00" }
+```
+Merchant OCID 500
+├── MTN maps: OCID 500 → +256701234567 (internal)
+├── PayPal maps: OCID 500 → merchant@email.com (internal)
+└── Barclays maps: OCID 500 → account 12345678 (internal)
 ```
 
-But merchants who want cross-platform interoperability can register an OCID and link it to their MOMO account. MTN maps OCID → phone number internally.
+The protocol never exposes these internal identifiers—just the OCID.
 
 **Q: What's the benefit for merchants?**
 

@@ -282,7 +282,7 @@ const paypal = new OpenchargeClient(200, 'private_key_hex...');
 const headers = paypal.signRequest(
   'POST',
   '/opencharge/payment/request',
-  { recipient: '+256701234567', amount: '10000.00', currency: 'UGX' }
+  { to: 500, amount: '10000.00', currency: 'UGX' }
 );
 
 // Create a proof (for banks/settlement providers)

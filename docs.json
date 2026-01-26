@@ -66,18 +66,20 @@
         "tab": "API reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Overview",
             "pages": [
               "api-reference/introduction"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Endpoints",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api-reference/endpoint/metadata",
+              "api-reference/endpoint/capabilities",
+              "api-reference/endpoint/payment-request",
+              "api-reference/endpoint/payment-settle",
+              "api-reference/endpoint/transfer",
+              "api-reference/endpoint/verify"
             ]
           }
         ]

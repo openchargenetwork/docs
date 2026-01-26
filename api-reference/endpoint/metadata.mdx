@@ -1,0 +1,49 @@
+---
+title: "Get OCID Metadata"
+openapi: "GET /metadata.json"
+---
+
+<Note>
+This endpoint is hosted at the URL you register in the Router Registry smart contract.
+Other services fetch this URL to discover your public key, API endpoint, and settlement preferences.
+</Note>
+
+## How It Works
+
+1. You register your OCID in the Router Registry with a metadata URL
+2. Other services resolve your OCID to get this URL
+3. They fetch your metadata to get your public key and capabilities
+4. They use the public key to verify your signatures
+
+## Hosting Options
+
+You can host your metadata as a static JSON file or dynamic endpoint:
+
+**Static file (S3, GitHub Pages, CDN):**
+```
+https://your-bucket.s3.amazonaws.com/opencharge/metadata.json
+```
+
+**Dynamic endpoint (supports key rotation):**
+```python
+@app.route('/opencharge/metadata.json')
+def metadata():
+    return jsonify({
+        "opencharge": "0.1",
+        "name": "My Payment Service",
+        "publicKey": get_current_public_key(),
+        "endpoint": "https://api.myservice.com/opencharge",
+        "capabilities": ["payment.send", "payment.receive"],
+        "settlement": {
+            "currencies": ["USD"],
+            "accepts": [{"ocid": 100, "name": "Bank Partner"}]
+        }
+    })
+```
+
+## Requirements
+
+- Must be served over HTTPS
+- Should be highly available (use CDN or multiple regions)
+- Recommended cache TTL: 5 minutes
+- Must return valid JSON with correct Content-Type header
