@@ -31,7 +31,7 @@ description: "Checklists, reference implementations, and test vectors for buildi
 
 - Register OCID
 - Host metadata with `settlement.accepts` list
-- Implement `/payment/request` endpoint
+- Implement `/payment/create` endpoint
 - Implement `/payment/settle` endpoint
 - Verify proofs from accepted issuers
 - Issue proofs to payers upon completion
@@ -86,13 +86,19 @@ class OpenchargeClient {
 
   /**
    * Create a signed transaction proof
+   * @param {string} txid - Issuer's transaction ID
+   * @param {object} from - Sender info { ocid, reference? }
+   * @param {object} to - Recipient info { ocid, reference? }
+   * @param {string} amount - Amount as decimal string
+   * @param {string} currency - ISO 4217 currency code
+   * @param {string} memo - Optional description
    */
   createProof({ txid, from, to, amount, currency, memo }) {
     const proof = {
       txid,
       issuer: this.ocid,
-      from,
-      to,
+      from: { ocid: from.ocid, ...(from.reference && { reference: from.reference }) },
+      to: { ocid: to.ocid, ...(to.reference && { reference: to.reference }) },
       amount,
       currency,
       timestamp: Math.floor(Date.now() / 1000)
@@ -281,7 +287,7 @@ const paypal = new OpenchargeClient(200, 'private_key_hex...');
 // Sign a payment request
 const headers = paypal.signRequest(
   'POST',
-  '/opencharge/payment/request',
+  '/opencharge/payment/create',
   { to: 500, amount: '10000.00', currency: 'UGX' }
 );
 
@@ -289,8 +295,8 @@ const headers = paypal.signRequest(
 const barclays = new OpenchargeClient(100, 'barclays_private_key...');
 const { proof, signature } = barclays.createProof({
   txid: 'barclays_tx_456',
-  from: 200,
-  to: 300,
+  from: { ocid: 200, reference: 'paypal_tx_123' },
+  to: { ocid: 300, reference: 'momo_tx_789' },
   amount: '10000.00',
   currency: 'UGX',
   memo: 'Settlement for ORD-2024-001'
@@ -323,7 +329,7 @@ OCID: 200
 Timestamp: 1706500000
 Nonce: req_test123
 Method: POST
-Path: /opencharge/payment/request
+Path: /opencharge/payment/create
 Body: {"amount":"100.00","currency":"USD"}
 
 Body Hash (SHA256): d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592
@@ -333,7 +339,7 @@ Canonical Message:
 1706500000
 req_test123
 POST
-/opencharge/payment/request
+/opencharge/payment/create
 d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592
 
 Message Hash (SHA256): [compute]
@@ -348,15 +354,15 @@ Proof Object:
 {
   "amount": "10000.00",
   "currency": "UGX",
-  "from": 200,
+  "from": { "ocid": 200, "reference": "paypal_tx_123" },
   "issuer": 100,
   "timestamp": 1706500500,
-  "to": 300,
+  "to": { "ocid": 300, "reference": "momo_tx_789" },
   "txid": "test_tx_001"
 }
 
 Canonical (sorted, no whitespace):
-{"amount":"10000.00","currency":"UGX","from":200,"issuer":100,"timestamp":1706500500,"to":300,"txid":"test_tx_001"}
+{"amount":"10000.00","currency":"UGX","from":{"ocid":200,"reference":"paypal_tx_123"},"issuer":100,"timestamp":1706500500,"to":{"ocid":300,"reference":"momo_tx_789"},"txid":"test_tx_001"}
 
 Hash (SHA256): [compute]
 Expected Signature: [compute with issuer's test key]

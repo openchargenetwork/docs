@@ -30,7 +30,7 @@ STEP 2: PayPal initiates payment request
 
     PayPal                                              MTN MOMO
        │                                                    │
-       │  POST /payment/request                             │
+       │  POST /payment/create                              │
        │  { to: 500,                                        │
        │    amount: "10000.00", currency: "UGX" }           │
        │ ──────────────────────────────────────────────────►│
@@ -54,8 +54,8 @@ STEP 3: PayPal instructs Barclays to pay MTN
     PayPal                                              Barclays
        │                                                    │
        │  POST /transfer                                    │
-       │  { from: { ocid: 100, "reference": "PAYPAL-RESERVES-UG" },                        │
-       │    to: { ocid: 300 },                              │
+       │  { from: { reference: "paypal_tx_123" },           │
+       │    to: { ocid: 300, reference: "momo_tx_789" },    │
        │    amount: "10000.00", currency: "UGX" }           │
        │ ──────────────────────────────────────────────────►│
        │                                                    │

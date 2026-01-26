@@ -13,7 +13,7 @@ Discover a service's capabilities and settlement preferences.
 {
   "ocid": 300,
   "name": "MTN Mobile Money Uganda",
-  "capabilities": ["payment.receive", "settlement.accept"],
+  "capabilities": ["payment.receive", "payment.settle"],
   "settlement": {
     "currencies": ["UGX", "USD"],
     "accepts": [
@@ -24,9 +24,9 @@ Discover a service's capabilities and settlement preferences.
 }
 ```
 
-## POST /payment/request
+## POST /payment/create
 
-Initiate a payment request to a merchant OCID.
+Create a payment to a merchant OCID.
 
 **Request:**
 
@@ -73,8 +73,8 @@ Submit settlement proof to complete a pending payment.
   "proof": {
     "txid": "barclays_tx_456",
     "issuer": 100,
-    "from": 200,
-    "to": 300,
+    "from": { "ocid": 200, "reference": "paypal_tx_123" },
+    "to": { "ocid": 300, "reference": "momo_tx_789" },
     "amount": "10000.00",
     "currency": "UGX",
     "timestamp": 1706500500,
@@ -94,8 +94,8 @@ Submit settlement proof to complete a pending payment.
   "proof": {
     "txid": "momo_tx_789",
     "issuer": 300,
-    "from": 200,
-    "to": 400,
+    "from": { "ocid": 200, "reference": "paypal_tx_123" },
+    "to": { "ocid": 400, "reference": "momo_tx_789" },
     "amount": "10000.00",
     "currency": "UGX",
     "timestamp": 1706500600,
@@ -107,9 +107,9 @@ Submit settlement proof to complete a pending payment.
 
 Note: The merchant (OCID 400 in this example) receives MTN's proof. They don't see or need Barclays' proof—that's between PayPal and MTN.
 
-## POST /transfer
+## POST /transfer/create
 
-Execute a transfer (for banks, settlement providers).
+Create a transfer (for banks, settlement providers).
 
 **Request:**
 
@@ -136,8 +136,8 @@ Execute a transfer (for banks, settlement providers).
   "proof": {
     "txid": "barclays_tx_456",
     "issuer": 100,
-    "from": 200,
-    "to": 300,
+    "from": { "ocid": 200, "reference": "paypal_tx_123" },
+    "to": { "ocid": 300, "reference": "momo_tx_789" },
     "amount": "10000.00",
     "currency": "UGX",
     "timestamp": 1706500500,
@@ -158,8 +158,8 @@ Optional endpoint for additional verification.
   "txid": "barclays_tx_456",
   "status": "confirmed",
   "issuer": 100,
-  "from": 200,
-  "to": 300,
+  "from": { "ocid": 200, "reference": "paypal_tx_123" },
+  "to": { "ocid": 300, "reference": "momo_tx_789" },
   "amount": "10000.00",
   "currency": "UGX",
   "timestamp": 1706500500

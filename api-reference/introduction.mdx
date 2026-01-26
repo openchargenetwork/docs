@@ -53,14 +53,14 @@ See [Request Authentication](/guides/protocol/request-authentication) for comple
 
 ## Endpoints
 
-| Endpoint | Method | Description |
-| -------- | ------ | ----------- |
-| `/metadata.json` | GET | OCID metadata (public key, endpoint, capabilities) |
-| `/capabilities` | GET | Discover service capabilities and settlement preferences |
-| `/payment/request` | POST | Initiate a payment request |
-| `/payment/settle` | POST | Submit settlement proof to complete payment |
-| `/transfer` | POST | Execute a transfer (banks/settlement providers) |
-| `/verify/{txid}` | GET | Verify a transaction |
+| Endpoint | Method | Capability | Description |
+| -------- | ------ | ---------- | ----------- |
+| `/metadata.json` | GET | - | OCID metadata (public key, endpoint, capabilities) |
+| `/capabilities` | GET | - | Discover service capabilities and settlement preferences |
+| `/payment/create` | POST | `payment.create` | Create a payment to a merchant OCID |
+| `/payment/settle` | POST | `payment.settle` | Submit settlement proof to complete payment |
+| `/transfer/create` | POST | `transfer.create` | Create a transfer (banks/settlement providers) |
+| `/verify/{txid}` | GET | `verify.txid` | Verify a transaction |
 
 <Note>
 The `/metadata.json` endpoint is hosted at the URL you register in the Router Registry.

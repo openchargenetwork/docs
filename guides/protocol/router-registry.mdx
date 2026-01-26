@@ -77,7 +77,7 @@ The metadata URL must return a JSON document:
 
   "capabilities": [
     "payment.receive",
-    "settlement.accept"
+    "payment.settle"
   ],
 
   "settlement": {
@@ -112,13 +112,13 @@ The metadata URL must return a JSON document:
 
 ### Standard Capabilities
 
-| Capability           | Description                                        |
-| -------------------- | -------------------------------------------------- |
-| `payment.send`       | Can initiate outbound payments                     |
-| `payment.receive`    | Can receive inbound payments                       |
-| `settlement.accept`  | Accepts settlement proofs                          |
-| `settlement.provide` | Provides signed proofs (banks, etc.)               |
-| `transfer.execute`   | Can execute transfers on behalf of account holders |
+| Capability         | Description                                        |
+| ------------------ | -------------------------------------------------- |
+| `payment.create`   | Can create payments (POST /payment/create)         |
+| `payment.settle`   | Can accept settlement proofs (POST /payment/settle)|
+| `payment.receive`  | Can receive inbound payments (be a recipient)      |
+| `transfer.create`  | Can execute transfers (POST /transfer/create)      |
+| `verify.txid`      | Provides transaction verification (GET /verify)    |
 
 ## Multiple OCIDs
 

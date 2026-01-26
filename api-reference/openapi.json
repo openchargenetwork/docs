@@ -35,7 +35,7 @@
                   "icon": "https://mtn.co.ug/icon.png",
                   "publicKey": "a34b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b",
                   "endpoint": "https://api.mtn.co.ug/opencharge",
-                  "capabilities": ["payment.receive", "settlement.accept"],
+                  "capabilities": ["payment.receive", "payment.settle"],
                   "settlement": {
                     "currencies": ["UGX", "USD"],
                     "accepts": [
@@ -68,7 +68,7 @@
                 "example": {
                   "ocid": 300,
                   "name": "MTN Mobile Money Uganda",
-                  "capabilities": ["payment.receive", "settlement.accept"],
+                  "capabilities": ["payment.receive", "payment.settle"],
                   "settlement": {
                     "currencies": ["UGX", "USD"],
                     "accepts": [
@@ -83,11 +83,11 @@
         }
       }
     },
-    "/payment/request": {
+    "/payment/create": {
       "post": {
-        "operationId": "createPaymentRequest",
-        "summary": "Create payment request",
-        "description": "Initiate a payment request to a recipient. The response will indicate which settlement sources are accepted to complete the payment.",
+        "operationId": "createPayment",
+        "summary": "Create payment",
+        "description": "Create a payment to a merchant OCID. The response will indicate which settlement sources are accepted to complete the payment.",
         "parameters": [
           { "$ref": "#/components/parameters/X-OC-ID" },
           { "$ref": "#/components/parameters/X-OC-Timestamp" },
@@ -182,8 +182,8 @@
                 "proof": {
                   "txid": "barclays_tx_456",
                   "issuer": 100,
-                  "from": 200,
-                  "to": 300,
+                  "from": { "ocid": 200, "reference": "paypal_tx_123" },
+                  "to": { "ocid": 300, "reference": "momo_tx_789" },
                   "amount": "10000.00",
                   "currency": "UGX",
                   "timestamp": 1706500500,
@@ -209,8 +209,8 @@
                   "proof": {
                     "txid": "momo_tx_789",
                     "issuer": 300,
-                    "from": 200,
-                    "to": 400,
+                    "from": { "ocid": 200, "reference": "paypal_tx_123" },
+                    "to": { "ocid": 400, "reference": "momo_tx_789" },
                     "amount": "10000.00",
                     "currency": "UGX",
                     "timestamp": 1706500600,
@@ -254,11 +254,11 @@
         }
       }
     },
-    "/transfer": {
+    "/transfer/create": {
       "post": {
-        "operationId": "executeTransfer",
-        "summary": "Execute a transfer",
-        "description": "Execute a transfer between accounts. Used by banks and settlement providers to move funds and generate signed proofs.",
+        "operationId": "createTransfer",
+        "summary": "Create transfer",
+        "description": "Create a transfer between accounts. Used payment gateways and settlement providers to move funds and generate signed proofs.",
         "parameters": [
           { "$ref": "#/components/parameters/X-OC-ID" },
           { "$ref": "#/components/parameters/X-OC-Timestamp" },
@@ -300,8 +300,8 @@
                   "proof": {
                     "txid": "barclays_tx_456",
                     "issuer": 100,
-                    "from": 200,
-                    "to": 300,
+                    "from": { "ocid": 200, "reference": "paypal_tx_123" },
+                    "to": { "ocid": 300, "reference": "momo_tx_789" },
                     "amount": "10000.00",
                     "currency": "UGX",
                     "timestamp": 1706500500,
@@ -363,8 +363,8 @@
                   "txid": "barclays_tx_456",
                   "status": "confirmed",
                   "issuer": 100,
-                  "from": 200,
-                  "to": 300,
+                  "from": { "ocid": 200, "reference": "paypal_tx_123" },
+                  "to": { "ocid": 300, "reference": "momo_tx_789" },
                   "amount": "10000.00",
                   "currency": "UGX",
                   "timestamp": 1706500500
@@ -468,7 +468,7 @@
             "type": "array",
             "items": {
               "type": "string",
-              "enum": ["payment.send", "payment.receive", "settlement.accept", "settlement.provide", "transfer.execute"]
+              "enum": ["payment.create", "payment.settle", "payment.receive", "transfer.create", "verify.txid"]
             },
             "description": "List of supported operations"
           },
@@ -514,7 +514,7 @@
             "type": "array",
             "items": {
               "type": "string",
-              "enum": ["payment.send", "payment.receive", "settlement.accept", "settlement.provide", "transfer.execute"]
+              "enum": ["payment.create", "payment.settle", "payment.receive", "transfer.create", "verify.txid"]
             },
             "description": "List of supported operations"
           },
@@ -629,12 +629,34 @@
             "description": "OCID of service that executed the transfer"
           },
           "from": {
-            "type": "integer",
-            "description": "OCID of sender"
+            "type": "object",
+            "required": ["ocid"],
+            "description": "Sender information",
+            "properties": {
+              "ocid": {
+                "type": "integer",
+                "description": "Sender's OCID"
+              },
+              "reference": {
+                "type": "string",
+                "description": "Sender's transaction ID for correlating this proof to their original payment"
+              }
+            }
           },
           "to": {
-            "type": "integer",
-            "description": "OCID of recipient"
+            "type": "object",
+            "required": ["ocid"],
+            "description": "Recipient information",
+            "properties": {
+              "ocid": {
+                "type": "integer",
+                "description": "Recipient's OCID"
+              },
+              "reference": {
+                "type": "string",
+                "description": "Recipient's transaction ID for correlating this proof to their pending payment"
+              }
+            }
           },
           "amount": {
             "type": "string",
@@ -710,7 +732,7 @@
               },
               "reference": {
                 "type": "string",
-                "description": "Internal account reference"
+                "description": "Sender's transaction ID for tracking this payment (e.g., the txid from the original payment.create)"
               }
             }
           },
@@ -724,7 +746,7 @@
               },
               "reference": {
                 "type": "string",
-                "description": "Internal account reference"
+                "description": "Recipient's transaction ID for tracking this payment (e.g., txid from their pending payment)"
               }
             }
           },
@@ -778,12 +800,32 @@
             "description": "OCID of issuer"
           },
           "from": {
-            "type": "integer",
-            "description": "OCID of sender"
+            "type": "object",
+            "description": "Sender information",
+            "properties": {
+              "ocid": {
+                "type": "integer",
+                "description": "Sender's OCID"
+              },
+              "reference": {
+                "type": "string",
+                "description": "Sender's transaction ID"
+              }
+            }
           },
           "to": {
-            "type": "integer",
-            "description": "OCID of recipient"
+            "type": "object",
+            "description": "Recipient information",
+            "properties": {
+              "ocid": {
+                "type": "integer",
+                "description": "Recipient's OCID"
+              },
+              "reference": {
+                "type": "string",
+                "description": "Recipient's transaction ID"
+              }
+            }
           },
           "amount": {
             "type": "string",

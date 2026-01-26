@@ -14,8 +14,8 @@ A transaction proof is a signed receipt attesting that a transfer was completed.
   "proof": {
     "txid": "barclays_tx_456",
     "issuer": 100,
-    "from": 200,
-    "to": 300,
+    "from": { "ocid": 200, "reference": "paypal_tx_123" },
+    "to": { "ocid": 300, "reference": "momo_tx_789" },
     "amount": "10000.00",
     "currency": "UGX",
     "timestamp": 1706500500,
@@ -31,8 +31,12 @@ A transaction proof is a signed receipt attesting that a transfer was completed.
 | ----------- | ------ | -------- | ------------------------------------------ |
 | `txid`      | string | Yes      | Unique transaction ID from issuer          |
 | `issuer`    | number | Yes      | OCID of service that executed the transfer |
-| `from`      | number | Yes      | OCID of sender                             |
-| `to`        | number | Yes      | OCID of recipient                          |
+| `from`      | object | Yes      | Sender information                         |
+| `from.ocid` | number | Yes      | Sender's OCID                              |
+| `from.reference` | string | No  | Sender's transaction ID for correlation    |
+| `to`        | object | Yes      | Recipient information                      |
+| `to.ocid`   | number | Yes      | Recipient's OCID                           |
+| `to.reference` | string | No     | Recipient's transaction ID for correlation |
 | `amount`    | string | Yes      | Amount as decimal string                   |
 | `currency`  | string | Yes      | ISO 4217 currency code                     |
 | `timestamp` | number | Yes      | Unix timestamp when transfer completed     |

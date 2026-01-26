@@ -35,30 +35,6 @@
               "guides/protocol/faq",
               "guides/protocol/implementation-guide"
             ]
-          },
-          {
-            "group": "Customization",
-            "pages": [
-              "essentials/settings",
-              "essentials/navigation"
-            ]
-          },
-          {
-            "group": "Writing content",
-            "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
-            ]
-          },
-          {
-            "group": "AI tools",
-            "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
-            ]
           }
         ]
       },
@@ -76,9 +52,9 @@
             "pages": [
               "api-reference/endpoint/metadata",
               "api-reference/endpoint/capabilities",
-              "api-reference/endpoint/payment-request",
+              "api-reference/endpoint/payment-create",
               "api-reference/endpoint/payment-settle",
-              "api-reference/endpoint/transfer",
+              "api-reference/endpoint/transfer-create",
               "api-reference/endpoint/verify"
             ]
           }
@@ -91,13 +67,13 @@
     "links": [
       {
         "label": "Support",
-        "href": "mailto:hi@mintlify.com"
+        "href": "mailto:support@opencharge.network"
       }
     ],
     "primary": {
       "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
+      "label": "Opencharge",
+      "href": "https://app.opencharge.network"
     }
   },
   "contextual": {
@@ -114,9 +90,8 @@
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
+      "x": "https://x.com/openchargenetwork",
+      "github": "https://github.com/openchargenetwork"
     }
   }
 }
