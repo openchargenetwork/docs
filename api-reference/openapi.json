@@ -154,10 +154,14 @@
                 "expiresAt": 1706503600,
                 "order": {
                   "id": "ord_abc123",
-                  "urls": [
-                    "https://merchant.example/orders/ord_abc123",
-                    "https://gateway.example/orders/abc123"
-                  ]
+                  "urls": {
+                    "order": [
+                      "https://merchant.example/orders/ord_abc123",
+                      "https://gateway.example/orders/abc123"
+                    ],
+                    "completed": "https://merchant.example/orders/ord_abc123/success",
+                    "cancelled": "https://merchant.example/orders/ord_abc123/cancelled"
+                  }
                 }
               }
             }
@@ -361,9 +365,13 @@
                 "memo": "Settlement for momo_tx_789",
                 "order": {
                   "id": "ord_abc123",
-                  "urls": [
-                    "https://merchant.example/orders/ord_abc123"
-                  ]
+                  "urls": {
+                    "order": [
+                      "https://merchant.example/orders/ord_abc123"
+                    ],
+                    "completed": "https://merchant.example/orders/ord_abc123/success",
+                    "cancelled": "https://merchant.example/orders/ord_abc123/cancelled"
+                  }
                 }
               }
             }
@@ -573,7 +581,7 @@
       "post": {
         "operationId": "createOrder",
         "summary": "Create order",
-        "description": "Submit an order to be signed by the merchant or gateway. The order object is canonicalized and signed using the merchant's private key. Payment apps verify the signature using the merchant's public key from their metadata. The signed order is portable and can be hosted anywhere.",
+        "description": "Submit an order to be signed by the merchant, processed by payment app, or stored by merchant gateway. The order object is canonicalized and signed using the merchant's private key. Payment apps verify the signature using the merchant's public key from their metadata. The signed order is portable and can be hosted anywhere.",
         "parameters": [
           {
             "$ref": "#/components/parameters/X-OC-ID"
@@ -655,9 +663,13 @@
                     "expiresAt": 1706400000
                   },
                   "signature": "a1b2c3d4e5f6...7f1b",
-                  "urls": [
-                    "https://gateway.example/orders/abc123"
-                  ]
+                  "urls": {
+                    "order": [
+                      "https://gateway.example/orders/abc123"
+                    ],
+                    "completed": "https://merchant.example/orders/ord_abc123/success",
+                    "cancelled": "https://merchant.example/orders/ord_abc123/cancelled"
+                  }
                 }
               }
             }
@@ -957,12 +969,33 @@
                 "description": "The order ID from the signed order object"
               },
               "urls": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "format": "uri"
-                },
-                "description": "URLs where the order can be retrieved"
+                "type": "object",
+                "description": "URLs related to the order",
+                "properties": {
+                  "order": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "description": "URLs where the order can be retrieved"
+                  },
+                  "completed": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "URL to redirect on successful payment completion"
+                  },
+                  "cancelled": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "URL to redirect on payment cancellation"
+                  },
+                  "payment": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "URL added by payment gateway for redirect"
+                  }
+                }
               }
             }
           }
@@ -1191,12 +1224,33 @@
                 "description": "The order ID from the signed order object"
               },
               "urls": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "format": "uri"
-                },
-                "description": "URLs where the order can be retrieved"
+                "type": "object",
+                "description": "URLs related to the order",
+                "properties": {
+                  "order": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "description": "URLs where the order can be retrieved"
+                  },
+                  "completed": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "URL to redirect on successful payment completion"
+                  },
+                  "cancelled": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "URL to redirect on payment cancellation"
+                  },
+                  "payment": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "URL added by payment gateway for redirect"
+                  }
+                }
               }
             }
           }
@@ -1484,12 +1538,33 @@
             "description": "secp256k1 signature of the canonicalized order JSON"
           },
           "urls": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uri"
-            },
-            "description": "URLs where the order can be retrieved"
+            "type": "object",
+            "description": "URLs related to the order",
+            "properties": {
+              "order": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "description": "URLs where the order can be retrieved"
+              },
+              "completed": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to redirect on successful payment completion"
+              },
+              "cancelled": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to redirect on payment cancellation"
+              },
+              "payment": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL added by payment gateway for redirect"
+              }
+            }
           }
         }
       },
