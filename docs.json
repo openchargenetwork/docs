@@ -18,7 +18,7 @@
             "pages": [
               "index",
               "guides/getting-started/open-charge-protocol",
-              "guides/getting-started/development"
+              "guides/getting-started/developers"
             ]
           },
           {
@@ -28,7 +28,6 @@
               "guides/protocol/router-registry",
               "guides/protocol/request-authentication",
               "guides/protocol/transaction-proofs",
-              "guides/protocol/api-endpoints",
               "guides/protocol/settlement-flow",
               "guides/protocol/error-codes",
               "guides/protocol/security",
@@ -52,9 +51,66 @@
             "pages": [
               "api-reference/endpoint/metadata",
               "api-reference/endpoint/capabilities",
+              "api-reference/endpoint/transfer-create",
+              "api-reference/endpoint/transfer-webhook",
               "api-reference/endpoint/payment-create",
               "api-reference/endpoint/payment-settle",
+              "api-reference/endpoint/order-create",
+              "api-reference/endpoint/order-status",
+              "api-reference/endpoint/verify"
+            ]
+          },
+           {
+            "group": "SDKs",
+            "pages": [
+              "api-reference/sdks/official",
+              "api-reference/sdks/third-party"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Gateway Examples",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api-reference/introduction"
+            ]
+          },
+          {
+            "group": "Endpoints",
+            "pages": [
+              "api-reference/endpoint/metadata",
+              "api-reference/endpoint/capabilities",
               "api-reference/endpoint/transfer-create",
+              "api-reference/endpoint/payment-create",
+              "api-reference/endpoint/payment-settle",
+              "api-reference/endpoint/order-create",
+              "api-reference/endpoint/verify"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Merchant Examples",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api-reference/introduction"
+            ]
+          },
+          {
+            "group": "Endpoints",
+            "pages": [
+              "api-reference/endpoint/metadata",
+              "api-reference/endpoint/capabilities",
+              "api-reference/endpoint/transfer-create",
+              "api-reference/endpoint/payment-create",
+              "api-reference/endpoint/payment-settle",
+              "api-reference/endpoint/order-create",
+              "api-reference/endpoint/order-status",
               "api-reference/endpoint/verify"
             ]
           }

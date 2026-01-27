@@ -108,13 +108,16 @@ The metadata URL must return a JSON document:
 
 ### Standard Capabilities
 
-| Capability         | Description                                        |
-| ------------------ | -------------------------------------------------- |
-| `payment.create`   | Can create payments (POST /payment/create)         |
-| `payment.settle`   | Can accept settlement proofs (POST /payment/settle)|
-| `payment.receive`  | Can receive inbound payments (be a recipient)      |
-| `transfer.create`  | Can execute transfers (POST /transfer/create)      |
-| `verify.txid`      | Provides transaction verification (GET /verify)    |
+| Capability         | Description                                                 |
+| ------------------ | ----------------------------------------------------------- |
+| `payment.create`   | Can create payments (POST /payment/create)                  |
+| `payment.settle`   | Can accept settlement proofs (POST /payment/settle)         |
+| `payment.receive`  | Can receive inbound payments (be a recipient)               |
+| `transfer.create`  | Can execute transfers (POST /transfer/create)               |
+| `transfer.webhook` | Can receive transfer notifications (POST /transfer/webhook) |
+| `orders.create`    | Can create and sign orders (POST /orders/create)            |
+| `orders.status`    | Provides order status (GET /orders/{orderId}/status)        |
+| `verify.txid`      | Provides transaction verification (GET /verify)             |
 
 ## Multiple OCIDs
 

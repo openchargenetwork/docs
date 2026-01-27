@@ -35,10 +35,20 @@
                   "icon": "https://mtn.co.ug/icon.png",
                   "publicKey": "a34b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b",
                   "endpoint": "https://api.mtn.co.ug/opencharge",
-                  "capabilities": ["payment.receive", "payment.settle"],
+                  "capabilities": [
+                    "payment.receive",
+                    "payment.settle"
+                  ],
                   "settlement": {
-                    "currencies": ["UGX", "USD"],
-                    "accepts": [100, 101, 102]
+                    "currencies": [
+                      "UGX",
+                      "USD"
+                    ],
+                    "accepts": [
+                      100,
+                      101,
+                      102
+                    ]
                   },
                   "contact": "integrations@mtn.co.ug"
                 }
@@ -52,10 +62,24 @@
       "get": {
         "operationId": "getCapabilities",
         "summary": "Get service capabilities",
-        "description": "Discover a service's capabilities and settlement preferences. Use this to find out which settlement sources a service accepts before initiating a payment.",
+        "description": "Authenticated endpoint for partners to discover their specific capabilities and permissions at a gateway / merchant. Unlike the public /metadata.json, this returns the exact capabilities available to the requesting OCID based on service preferences or partnership agreement.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/X-OC-ID"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Timestamp"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Nonce"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Signature"
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Service capabilities and settlement preferences",
+            "description": "Service capabilities and settlement preferences for the authenticated OCID",
             "content": {
               "application/json": {
                 "schema": {
@@ -64,11 +88,30 @@
                 "example": {
                   "ocid": 300,
                   "name": "MTN Mobile Money Uganda",
-                  "capabilities": ["payment.receive", "payment.settle"],
+                  "capabilities": [
+                    "payment.receive",
+                    "payment.settle"
+                  ],
                   "settlement": {
-                    "currencies": ["UGX", "USD"],
-                    "accepts": [100, 101]
+                    "currencies": [
+                      "UGX",
+                      "USD"
+                    ],
+                    "accepts": [
+                      100,
+                      101
+                    ]
                   }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -80,12 +123,20 @@
       "post": {
         "operationId": "createPayment",
         "summary": "Create payment",
-        "description": "Create a payment to a merchant OCID. The response will indicate which settlement sources are accepted to complete the payment.",
+        "description": "Create a pending payment to an OCID. This API should be used to request a gateway to make a payment if the requestor OCID has no reserve or account with that said gateway. The response will include which settlement providers are allowed to complete the payment. To complete the payment the requestor must effect a transfer to the gateway OCID via one of the accepted settlement providers.",
         "parameters": [
-          { "$ref": "#/components/parameters/X-OC-ID" },
-          { "$ref": "#/components/parameters/X-OC-Timestamp" },
-          { "$ref": "#/components/parameters/X-OC-Nonce" },
-          { "$ref": "#/components/parameters/X-OC-Signature" }
+          {
+            "$ref": "#/components/parameters/X-OC-ID"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Timestamp"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Nonce"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Signature"
+          }
         ],
         "requestBody": {
           "required": true,
@@ -100,7 +151,14 @@
                 "currency": "UGX",
                 "reference": "ORD-2024-001",
                 "memo": "Payment for electronics",
-                "expiresAt": 1706503600
+                "expiresAt": 1706503600,
+                "order": {
+                  "id": "ord_abc123",
+                  "urls": [
+                    "https://merchant.example/orders/ord_abc123",
+                    "https://gateway.example/orders/abc123"
+                  ]
+                }
               }
             }
           }
@@ -120,7 +178,10 @@
                   "currency": "UGX",
                   "expiresAt": 1706503600,
                   "settlement": {
-                    "accepts": [100, 101]
+                    "accepts": [
+                      100,
+                      101
+                    ]
                   }
                 }
               }
@@ -153,12 +214,20 @@
       "post": {
         "operationId": "settlePayment",
         "summary": "Settle a payment",
-        "description": "Submit a settlement proof to complete a pending payment. The proof must be signed by an issuer that the recipient accepts.",
+        "description": "Submit a settlement proof to complete a pending payment at a gateway. To get proof, use Create Transfer API via any of the supported settlement OCIDs. Reference the pending payment txid in the [to] field.",
         "parameters": [
-          { "$ref": "#/components/parameters/X-OC-ID" },
-          { "$ref": "#/components/parameters/X-OC-Timestamp" },
-          { "$ref": "#/components/parameters/X-OC-Nonce" },
-          { "$ref": "#/components/parameters/X-OC-Signature" }
+          {
+            "$ref": "#/components/parameters/X-OC-ID"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Timestamp"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Nonce"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Signature"
+          }
         ],
         "requestBody": {
           "required": true,
@@ -172,8 +241,14 @@
                 "proof": {
                   "txid": "barclays_tx_456",
                   "issuer": 100,
-                  "from": { "ocid": 200, "reference": "paypal_tx_123" },
-                  "to": { "ocid": 300, "reference": "momo_tx_789" },
+                  "from": {
+                    "ocid": 200,
+                    "reference": "paypal_tx_123"
+                  },
+                  "to": {
+                    "ocid": 300,
+                    "reference": "momo_tx_789"
+                  },
                   "amount": "10000.00",
                   "currency": "UGX",
                   "timestamp": 1706500500,
@@ -193,18 +268,21 @@
                   "$ref": "#/components/schemas/SettleResponse"
                 },
                 "example": {
-                  "status": "completed",
-                  "txid": "momo_tx_789",
-                  "completedAt": 1706500600,
                   "proof": {
-                    "txid": "momo_tx_789",
-                    "issuer": 300,
-                    "from": { "ocid": 200, "reference": "paypal_tx_123" },
-                    "to": { "ocid": 400, "reference": "momo_tx_789" },
+                    "txid": "barclays_tx_456",
+                    "issuer": 100,
+                    "from": {
+                      "ocid": 200,
+                      "reference": "paypal_tx_123"
+                    },
+                    "to": {
+                      "ocid": 300,
+                      "reference": "momo_tx_789"
+                    },
                     "amount": "10000.00",
                     "currency": "UGX",
-                    "timestamp": 1706500600,
-                    "memo": "Payment for electronics"
+                    "timestamp": 1706500500,
+                    "memo": "Settlement for momo_tx_789"
                   },
                   "signature": "d4e5f6..."
                 }
@@ -248,12 +326,20 @@
       "post": {
         "operationId": "createTransfer",
         "summary": "Create transfer",
-        "description": "Create a transfer between accounts. Used by payment gateways and settlement providers to move funds and generate signed proofs.",
+        "description": "Request a payment gateway to create a transfer from your OCID to another OCID. Completed Transfers must provide a signed proof attesting the transfer was completed. Implementations should POST the payment proof to the sender or/and recipient's /transfer/webhook endpoint if supported. Only sign completed transfers.",
         "parameters": [
-          { "$ref": "#/components/parameters/X-OC-ID" },
-          { "$ref": "#/components/parameters/X-OC-Timestamp" },
-          { "$ref": "#/components/parameters/X-OC-Nonce" },
-          { "$ref": "#/components/parameters/X-OC-Signature" }
+          {
+            "$ref": "#/components/parameters/X-OC-ID"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Timestamp"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Nonce"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Signature"
+          }
         ],
         "requestBody": {
           "required": true,
@@ -272,7 +358,13 @@
                 },
                 "amount": "10000.00",
                 "currency": "UGX",
-                "memo": "Settlement for momo_tx_789"
+                "memo": "Settlement for momo_tx_789",
+                "order": {
+                  "id": "ord_abc123",
+                  "urls": [
+                    "https://merchant.example/orders/ord_abc123"
+                  ]
+                }
               }
             }
           }
@@ -290,8 +382,14 @@
                   "proof": {
                     "txid": "barclays_tx_456",
                     "issuer": 100,
-                    "from": { "ocid": 200, "reference": "paypal_tx_123" },
-                    "to": { "ocid": 300, "reference": "momo_tx_789" },
+                    "from": {
+                      "ocid": 200,
+                      "reference": "paypal_tx_123"
+                    },
+                    "to": {
+                      "ocid": 300,
+                      "reference": "momo_tx_789"
+                    },
                     "amount": "10000.00",
                     "currency": "UGX",
                     "timestamp": 1706500500,
@@ -325,17 +423,103 @@
         }
       }
     },
+    "/transfer/webhook": {
+      "post": {
+        "operationId": "transferWebhook",
+        "summary": "Instant Transfer Notification (ITN)",
+        "description": "Receive signed transfer proofs on this endpoint. When a transfer involving your OCID is completed, a signed proof is POSTED to this endpoint if supported. Implementations should verify the proof signature, validate the issuer is trusted, and take appropriate action (e.g., credit the recipient, complete a pending payment).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/X-OC-ID"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Timestamp"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Nonce"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Signature"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferWebhookRequest"
+              },
+              "example": {
+                "proof": {
+                  "txid": "barclays_tx_456",
+                  "issuer": 100,
+                  "from": {
+                    "ocid": 200,
+                    "reference": "paypal_tx_123"
+                  },
+                  "to": {
+                    "ocid": 300,
+                    "reference": "momo_tx_789"
+                  },
+                  "amount": "10000.00",
+                  "currency": "UGX",
+                  "timestamp": 1706500500,
+                  "memo": "Settlement for ORD-2024-001"
+                },
+                "signature": "a1b2c3d4e5f6..."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Notification received and processed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransferWebhookResponse"
+                },
+                "example": {
+                  "status": "accepted",
+                  "txid": "barclays_tx_456"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid proof or signature",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/verify/{txid}": {
       "get": {
         "operationId": "verifyTransaction",
         "summary": "Verify a transaction",
-        "description": "Optional endpoint for additional verification of a transaction. Returns the transaction details if it exists and is confirmed.",
+        "description": "Optional endpoint for additional verification of a transfer. Returns the transfer details and signature proof if it exists.",
         "parameters": [
           {
             "name": "txid",
             "in": "path",
             "required": true,
-            "description": "The transaction ID to verify",
+            "description": "The transaction ID {txid} to check",
             "schema": {
               "type": "string"
             }
@@ -350,20 +534,192 @@
                   "$ref": "#/components/schemas/VerifyResponse"
                 },
                 "example": {
-                  "txid": "barclays_tx_456",
-                  "status": "confirmed",
-                  "issuer": 100,
-                  "from": { "ocid": 200, "reference": "paypal_tx_123" },
-                  "to": { "ocid": 300, "reference": "momo_tx_789" },
-                  "amount": "10000.00",
-                  "currency": "UGX",
-                  "timestamp": 1706500500
+                  "status": "completed",
+                  "proof": {
+                    "txid": "barclays_tx_456",
+                    "issuer": 100,
+                    "from": {
+                      "ocid": 200,
+                      "reference": "paypal_tx_123"
+                    },
+                    "to": {
+                      "ocid": 300,
+                      "reference": "momo_tx_789"
+                    },
+                    "amount": "10000.00",
+                    "currency": "UGX",
+                    "timestamp": 1706500500,
+                    "memo": "Settlement for momo_tx_789"
+                  },
+                  "signature": "a1b2c3..."
                 }
               }
             }
           },
           "404": {
             "description": "Transaction not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/create": {
+      "post": {
+        "operationId": "createOrder",
+        "summary": "Create order",
+        "description": "Submit an order to be signed by the merchant or gateway. The order object is canonicalized and signed using the merchant's private key. Payment apps verify the signature using the merchant's public key from their metadata. The signed order is portable and can be hosted anywhere.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/X-OC-ID"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Timestamp"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Nonce"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Signature"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderCreateRequest"
+              },
+              "example": {
+                "id": "ord_abc123",
+                "ocid": 500,
+                "reference": "store-42",
+                "amount": "15.00",
+                "currency": "USD",
+                "items": [
+                  {
+                    "id": "item_001",
+                    "name": "Large Coffee",
+                    "quantity": 2,
+                    "price": "5.00"
+                  },
+                  {
+                    "id": "item_002",
+                    "name": "Croissant",
+                    "quantity": 1,
+                    "price": "5.00"
+                  }
+                ],
+                "memo": "Table 5",
+                "expiresAt": 1706400000
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Order created and signed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderCreateResponse"
+                },
+                "example": {
+                  "order": {
+                    "id": "ord_abc123",
+                    "ocid": 500,
+                    "reference": "store-42",
+                    "amount": "15.00",
+                    "currency": "USD",
+                    "items": [
+                      {
+                        "id": "item_001",
+                        "name": "Large Coffee",
+                        "quantity": 2,
+                        "price": "5.00"
+                      },
+                      {
+                        "id": "item_002",
+                        "name": "Croissant",
+                        "quantity": 1,
+                        "price": "5.00"
+                      }
+                    ],
+                    "memo": "Table 5",
+                    "createdAt": 1706313600,
+                    "expiresAt": 1706400000
+                  },
+                  "signature": "a1b2c3d4e5f6...7f1b",
+                  "urls": [
+                    "https://gateway.example/orders/abc123"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/{orderId}/status": {
+      "get": {
+        "operationId": "getOrderStatus",
+        "summary": "Get order status",
+        "description": "Get the current payment status of an order. Implemented by merchants to allow payment apps and customers to check if an order has been paid.",
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "description": "The order ID from the signed order object",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order status retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderStatusResponse"
+                },
+                "example": {
+                  "orderId": "ord_abc123",
+                  "status": "paid",
+                  "paidAt": 1706313900,
+                  "txid": "tx_xyz789"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Order not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -422,7 +778,13 @@
     "schemas": {
       "OCIDMetadata": {
         "type": "object",
-        "required": ["opencharge", "name", "publicKey", "endpoint", "capabilities"],
+        "required": [
+          "opencharge",
+          "name",
+          "publicKey",
+          "endpoint",
+          "capabilities"
+        ],
         "description": "Metadata document hosted at the URL registered in the Router Registry. Contains everything other services need to interact with your OCID.",
         "properties": {
           "opencharge": {
@@ -458,7 +820,16 @@
             "type": "array",
             "items": {
               "type": "string",
-              "enum": ["payment.create", "payment.settle", "payment.receive", "transfer.create", "verify.txid"]
+              "enum": [
+                "payment.create",
+                "payment.settle",
+                "payment.receive",
+                "transfer.create",
+                "transfer.webhook",
+                "orders.create",
+                "orders.status",
+                "verify.txid"
+              ]
             },
             "description": "List of supported operations"
           },
@@ -490,7 +861,11 @@
       },
       "Capabilities": {
         "type": "object",
-        "required": ["ocid", "name", "capabilities"],
+        "required": [
+          "ocid",
+          "name",
+          "capabilities"
+        ],
         "properties": {
           "ocid": {
             "type": "integer",
@@ -504,7 +879,16 @@
             "type": "array",
             "items": {
               "type": "string",
-              "enum": ["payment.create", "payment.settle", "payment.receive", "transfer.create", "verify.txid"]
+              "enum": [
+                "payment.create",
+                "payment.settle",
+                "payment.receive",
+                "transfer.create",
+                "transfer.webhook",
+                "orders.create",
+                "orders.status",
+                "verify.txid"
+              ]
             },
             "description": "List of supported operations"
           },
@@ -534,7 +918,11 @@
       },
       "PaymentRequest": {
         "type": "object",
-        "required": ["to", "amount", "currency"],
+        "required": [
+          "to",
+          "amount",
+          "currency"
+        ],
         "properties": {
           "to": {
             "type": "integer",
@@ -559,16 +947,44 @@
           "expiresAt": {
             "type": "integer",
             "description": "Unix timestamp when the payment request expires"
+          },
+          "order": {
+            "type": "object",
+            "description": "Optional order reference for this payment",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "The order ID from the signed order object"
+              },
+              "urls": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "description": "URLs where the order can be retrieved"
+              }
+            }
           }
         }
       },
       "PaymentRequestResponse": {
         "type": "object",
-        "required": ["status", "txid", "amount", "currency"],
+        "required": [
+          "status",
+          "txid",
+          "amount",
+          "currency"
+        ],
         "properties": {
           "status": {
             "type": "string",
-            "enum": ["pending_settlement", "completed", "expired", "failed"],
+            "enum": [
+              "pending_settlement",
+              "completed",
+              "expired",
+              "failed"
+            ],
             "description": "Current status of the payment"
           },
           "txid": {
@@ -594,7 +1010,15 @@
       },
       "TransactionProof": {
         "type": "object",
-        "required": ["txid", "issuer", "from", "to", "amount", "currency", "timestamp"],
+        "required": [
+          "txid",
+          "issuer",
+          "from",
+          "to",
+          "amount",
+          "currency",
+          "timestamp"
+        ],
         "properties": {
           "txid": {
             "type": "string",
@@ -606,7 +1030,9 @@
           },
           "from": {
             "type": "object",
-            "required": ["ocid"],
+            "required": [
+              "ocid"
+            ],
             "description": "Sender information",
             "properties": {
               "ocid": {
@@ -621,7 +1047,9 @@
           },
           "to": {
             "type": "object",
-            "required": ["ocid"],
+            "required": [
+              "ocid"
+            ],
             "description": "Recipient information",
             "properties": {
               "ocid": {
@@ -654,7 +1082,11 @@
       },
       "SettleRequest": {
         "type": "object",
-        "required": ["txid", "proof", "signature"],
+        "required": [
+          "txid",
+          "proof",
+          "signature"
+        ],
         "properties": {
           "txid": {
             "type": "string",
@@ -671,11 +1103,16 @@
       },
       "SettleResponse": {
         "type": "object",
-        "required": ["status", "txid"],
+        "required": [
+          "status",
+          "txid"
+        ],
         "properties": {
           "status": {
             "type": "string",
-            "enum": ["completed"],
+            "enum": [
+              "completed"
+            ],
             "description": "Settlement status"
           },
           "txid": {
@@ -697,7 +1134,12 @@
       },
       "TransferRequest": {
         "type": "object",
-        "required": ["from", "to", "amount", "currency"],
+        "required": [
+          "from",
+          "to",
+          "amount",
+          "currency"
+        ],
         "properties": {
           "from": {
             "type": "object",
@@ -714,7 +1156,9 @@
           },
           "to": {
             "type": "object",
-            "required": ["ocid"],
+            "required": [
+              "ocid"
+            ],
             "properties": {
               "ocid": {
                 "type": "integer",
@@ -737,16 +1181,40 @@
           "memo": {
             "type": "string",
             "description": "Human-readable description"
+          },
+          "order": {
+            "type": "object",
+            "description": "Optional order reference for this transfer",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "The order ID from the signed order object"
+              },
+              "urls": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "description": "URLs where the order can be retrieved"
+              }
+            }
           }
         }
       },
       "TransferResponse": {
         "type": "object",
-        "required": ["status", "proof", "signature"],
+        "required": [
+          "status",
+          "proof",
+          "signature"
+        ],
         "properties": {
           "status": {
             "type": "string",
-            "enum": ["completed"],
+            "enum": [
+              "completed"
+            ],
             "description": "Transfer status"
           },
           "proof": {
@@ -758,72 +1226,85 @@
           }
         }
       },
-      "VerifyResponse": {
+      "TransferWebhookRequest": {
         "type": "object",
-        "required": ["txid", "status"],
+        "required": [
+          "proof",
+          "signature"
+        ],
         "properties": {
-          "txid": {
-            "type": "string",
-            "description": "Transaction ID"
+          "proof": {
+            "$ref": "#/components/schemas/TransactionProof"
           },
+          "signature": {
+            "type": "string",
+            "description": "secp256k1 signature of the proof from the issuer"
+          }
+        }
+      },
+      "TransferWebhookResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "txid"
+        ],
+        "properties": {
           "status": {
             "type": "string",
-            "enum": ["confirmed", "pending", "failed"],
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "description": "Whether the notification was accepted"
+          },
+          "txid": {
+            "type": "string",
+            "description": "The transaction ID from the proof"
+          },
+          "message": {
+            "type": "string",
+            "description": "Optional message explaining rejection reason"
+          }
+        }
+      },
+      "VerifyResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "proof",
+          "signature"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "pending",
+              "failed"
+            ],
             "description": "Transaction status"
           },
-          "issuer": {
-            "type": "integer",
-            "description": "OCID of issuer"
+          "proof": {
+            "$ref": "#/components/schemas/TransactionProof"
           },
-          "from": {
-            "type": "object",
-            "description": "Sender information",
-            "properties": {
-              "ocid": {
-                "type": "integer",
-                "description": "Sender's OCID"
-              },
-              "reference": {
-                "type": "string",
-                "description": "Sender's transaction ID"
-              }
-            }
-          },
-          "to": {
-            "type": "object",
-            "description": "Recipient information",
-            "properties": {
-              "ocid": {
-                "type": "integer",
-                "description": "Recipient's OCID"
-              },
-              "reference": {
-                "type": "string",
-                "description": "Recipient's transaction ID"
-              }
-            }
-          },
-          "amount": {
+          "signature": {
             "type": "string",
-            "description": "Amount"
-          },
-          "currency": {
-            "type": "string",
-            "description": "Currency code"
-          },
-          "timestamp": {
-            "type": "integer",
-            "description": "Completion timestamp"
+            "description": "secp256k1 signature of the proof"
           }
         }
       },
       "Error": {
         "type": "object",
-        "required": ["error"],
+        "required": [
+          "error"
+        ],
         "properties": {
           "error": {
             "type": "object",
-            "required": ["code", "message"],
+            "required": [
+              "code",
+              "message"
+            ],
             "properties": {
               "code": {
                 "type": "string",
@@ -843,7 +1324,9 @@
                   "TRANSACTION_EXPIRED",
                   "INSUFFICIENT_FUNDS",
                   "CAPABILITY_NOT_SUPPORTED",
-                  "RATE_LIMITED"
+                  "RATE_LIMITED",
+                  "ORDER_NOT_FOUND",
+                  "ORDER_EXPIRED"
                 ]
               },
               "message": {
@@ -855,6 +1338,190 @@
                 "description": "Additional error context"
               }
             }
+          }
+        }
+      },
+      "Order": {
+        "type": "object",
+        "required": [
+          "id",
+          "ocid",
+          "amount",
+          "currency",
+          "createdAt"
+        ],
+        "description": "An order object and a signature from a merchant. The entire object is canonicalized and signed by the merchant's private key.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique order identifier"
+          },
+          "ocid": {
+            "type": "integer",
+            "description": "Merchant's OCID"
+          },
+          "reference": {
+            "type": "string",
+            "description": "Merchant's internal reference"
+          },
+          "amount": {
+            "type": "string",
+            "description": "Total amount as decimal string"
+          },
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217 currency code"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItem"
+            },
+            "description": "Line items in the order"
+          },
+          "memo": {
+            "type": "string",
+            "description": "Customer-facing note"
+          },
+          "expiresAt": {
+            "type": "integer",
+            "description": "Unix timestamp when order expires"
+          },
+          "createdAt": {
+            "type": "integer",
+            "description": "Unix timestamp of order creation"
+          }
+        }
+      },
+      "OrderItem": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "quantity",
+          "price"
+        ],
+        "description": "A line item within an order",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Item identifier"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name"
+          },
+          "quantity": {
+            "type": "number",
+            "description": "Quantity ordered"
+          },
+          "price": {
+            "type": "string",
+            "description": "Unit price as decimal string"
+          }
+        }
+      },
+      "OrderCreateRequest": {
+        "type": "object",
+        "required": [
+          "id",
+          "ocid",
+          "amount",
+          "currency"
+        ],
+        "description": "Request to create and sign an order",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique order identifier"
+          },
+          "ocid": {
+            "type": "integer",
+            "description": "Merchant's OCID"
+          },
+          "reference": {
+            "type": "string",
+            "description": "Merchant's internal reference"
+          },
+          "amount": {
+            "type": "string",
+            "description": "Total amount as decimal string"
+          },
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217 currency code"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItem"
+            },
+            "description": "Line items in the order"
+          },
+          "memo": {
+            "type": "string",
+            "description": "Customer-facing note"
+          },
+          "expiresAt": {
+            "type": "integer",
+            "description": "Unix timestamp when order expires"
+          }
+        }
+      },
+      "OrderCreateResponse": {
+        "type": "object",
+        "required": [
+          "order",
+          "signature"
+        ],
+        "description": "Response containing the signed order",
+        "properties": {
+          "order": {
+            "$ref": "#/components/schemas/Order"
+          },
+          "signature": {
+            "type": "string",
+            "description": "secp256k1 signature of the canonicalized order JSON"
+          },
+          "urls": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "description": "URLs where the order can be retrieved"
+          }
+        }
+      },
+      "OrderStatusResponse": {
+        "type": "object",
+        "required": [
+          "orderId",
+          "status"
+        ],
+        "description": "Current payment status of an order",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "description": "The order ID"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "paid",
+              "expired",
+              "cancelled"
+            ],
+            "description": "Current payment status"
+          },
+          "paidAt": {
+            "type": "integer",
+            "description": "Unix timestamp when order was paid"
+          },
+          "txid": {
+            "type": "string",
+            "description": "Transaction ID of the payment"
           }
         }
       }
