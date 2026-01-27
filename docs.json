@@ -148,6 +148,17 @@
     "socials": {
       "x": "https://x.com/openchargenetwork",
       "github": "https://github.com/openchargenetwork"
-    }
+    },
+    "links": [
+      {
+        "title": "Legal",
+        "items": [
+          {
+            "label": "Terms of Use",
+            "href": "/terms-of-use"
+          }
+        ]
+      }
+    ]
   }
 }
