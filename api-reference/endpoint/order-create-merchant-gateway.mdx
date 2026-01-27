@@ -1,0 +1,15 @@
+---
+title: "Create Order (Merchant Gateway)"
+description: "Merchant gateways implement this endpoint to receive signed orders from merchants and return a redirect URL. The merchant redirects the user to complete payment on the gateway's hosted page."
+openapi: "POST /orders/create"
+---
+
+<Info>
+For detailed flow diagrams and implementation guidance, see the [Merchant Orders guide](/guides/protocol/merchant-orders#merchant-gateway-flow).
+</Info>
+
+**Implemened by:** Merchant gateways
+
+**Called by:** Merchants
+
+**Response:** Returns only `redirect_url` - the order is not echoed back since the merchant already has it.

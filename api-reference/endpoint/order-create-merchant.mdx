@@ -1,0 +1,13 @@
+---
+title: "Create Order (Merchant)"
+description: "Merchants implement this endpoint to provide signed orders to payment apps. The payment app sends order details, and the merchant returns the signed order with status URLs."
+openapi: "POST /orders/create"
+---
+
+<Info>
+For detailed flow diagrams and implementation guidance, see the [Merchant Orders guide](/guides/protocol/merchant-orders#merchant-flow).
+</Info>
+
+**Implemented by:** Merchants (vending machines, POS, mobile top-up)
+
+**Called by:** Payment gateway apps

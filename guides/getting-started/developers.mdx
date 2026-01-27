@@ -3,11 +3,46 @@ title: "Developers"
 description: "Resources for building with Opencharge"
 ---
 
+## Understanding Your Role
+
+Before integrating with OpenCharge, identify which role(s) apply to your service. Each role implements different endpoints and has different responsibilities.
+
+### Merchants
+
+**You are a Merchant if:** You sell goods or services and need to accept payments.
+
+Examples: Vending machines, mobile top-up kiosks, e-commerce stores, restaurants, retail POS systems.
+
+### Gateway Services
+
+Gateways are services that facilitate payments between merchants and users. There are two types of gateway services. You can implement one or both, but they require separate OCID registrations on the OpenCharge network.
+
+<CardGroup cols={2}>
+  <Card title="Merchant Gateway" icon="building-columns">
+    You onboard merchants who need to collect payments. You provide APIs or interfaces merchants use to integrate their services.
+
+    Examples: Payment processors, checkout providers, merchant acquirers.
+  </Card>
+
+  <Card title="Payment Gateway" icon="wallet">
+    You onboard end users and maintain wallets or balances for them. You help users complete payments at supported merchants.
+
+    Examples: Mobile money providers, digital wallets, banking apps.
+  </Card>
+</CardGroup>
+
+#### Merchant Gateway
+
+**You are a Merchant Gateway if:** You provide payment services to merchants - they integrate with your API to accept payments from their customers.
+
+#### Payment Gateway
+
+**You are a Payment Gateway if:** You provide wallet/payment services to end users - they use your app to pay at merchants.
+
 ## Resources
 
 - [API Reference](/api-reference/introduction) - Complete API documentation and endpoint reference
-- [Merchant Examples](#) - Integration examples for merchants
-- [Gateway Examples](#) - Integration examples for payment gateways
-- [Github Repos](https://github.com/openchargenetwork) - Download and contribute to opencharge code.
-- [Ecosystem](https://opencharge.network/ecosystem) - Download and contribute to opencharge code.
-- [Awesome Opencharge](https://github.com/openchargenetwork) - See the cool stuff others are doing on opencharge.
+- [Merchant Orders Guide](/guides/protocol/merchant-orders) - Detailed flow diagrams for order creation patterns
+- [Protocol Overview](/guides/protocol/protocol-overview) - How OpenCharge works
+- [Github Repos](https://github.com/openchargenetwork) - Download and contribute to OpenCharge code
+- [Ecosystem](https://opencharge.network/ecosystem) - Explore the OpenCharge ecosystem

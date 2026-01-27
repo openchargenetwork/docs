@@ -581,7 +581,7 @@
       "post": {
         "operationId": "createOrder",
         "summary": "Create order",
-        "description": "Submit an order to be signed by the merchant, processed by payment app, or stored by merchant gateway. The order object is canonicalized and signed using the merchant's private key. Payment apps verify the signature using the merchant's public key from their metadata. The signed order is portable and can be hosted anywhere.",
+        "description": "This endpoint has two implementations depending on who hosts it:\n\n**Merchant Implementation:** Payment apps call this endpoint to request a signed order from the merchant. The merchant creates the order, signs it, and returns it with status URLs.\n\n**Merchant Gateway Implementation:** Merchants call this endpoint on their merchant gateway to initiate a payment. The gateway returns a redirect URL where the merchant should send the user to complete payment.",
         "parameters": [
           {
             "$ref": "#/components/parameters/X-OC-ID"
@@ -601,44 +601,19 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/OrderCreateRequest"
-              },
-              "example": {
-                "id": "ord_abc123",
-                "ocid": 500,
-                "reference": "store-42",
-                "amount": "15.00",
-                "currency": "USD",
-                "items": [
+                "oneOf": [
                   {
-                    "id": "item_001",
-                    "name": "Large Coffee",
-                    "quantity": 2,
-                    "price": "5.00"
+                    "$ref": "#/components/schemas/OrderCreateRequest"
                   },
                   {
-                    "id": "item_002",
-                    "name": "Croissant",
-                    "quantity": 1,
-                    "price": "5.00"
+                    "$ref": "#/components/schemas/OrderCreateGatewayRequest"
                   }
-                ],
-                "memo": "Table 5",
-                "expiresAt": 1706400000
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Order created and signed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OrderCreateResponse"
-                },
-                "example": {
-                  "order": {
+                ]
+              },
+              "examples": {
+                "merchant": {
+                  "summary": "Payment app requesting order from merchant",
+                  "value": {
                     "id": "ord_abc123",
                     "ocid": 500,
                     "reference": "store-42",
@@ -659,16 +634,84 @@
                       }
                     ],
                     "memo": "Table 5",
-                    "createdAt": 1706313600,
                     "expiresAt": 1706400000
+                  }
+                },
+                "merchantGateway": {
+                  "summary": "Merchant submitting order to merchant gateway",
+                  "value": {
+                    "order": {
+                      "id": "ord_xyz789",
+                      "ocid": 500,
+                      "reference": "checkout-session-123",
+                      "amount": "99.99",
+                      "currency": "USD",
+                      "memo": "Online purchase",
+                      "createdAt": 1706313600,
+                      "expiresAt": 1706400000
+                    },
+                    "signature": "a1b2c3d4e5f6...merchant_sig"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Order processed successfully. Response varies by implementer type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/OrderCreateMerchantResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/OrderCreateMerchantGatewayResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "merchant": {
+                    "summary": "Merchant returns signed order",
+                    "value": {
+                      "order": {
+                        "id": "ord_abc123",
+                        "ocid": 500,
+                        "reference": "store-42",
+                        "amount": "15.00",
+                        "currency": "USD",
+                        "items": [
+                          {
+                            "id": "item_001",
+                            "name": "Large Coffee",
+                            "quantity": 2,
+                            "price": "5.00"
+                          },
+                          {
+                            "id": "item_002",
+                            "name": "Croissant",
+                            "quantity": 1,
+                            "price": "5.00"
+                          }
+                        ],
+                        "memo": "Table 5",
+                        "createdAt": 1706313600,
+                        "expiresAt": 1706400000
+                      },
+                      "signature": "a1b2c3d4e5f6...7f1b",
+                      "urls": {
+                        "status": "https://merchant.example/orders/ord_abc123/status",
+                        "cancel": "https://merchant.example/orders/ord_abc123/cancel"
+                      }
+                    }
                   },
-                  "signature": "a1b2c3d4e5f6...7f1b",
-                  "urls": {
-                    "order": [
-                      "https://gateway.example/orders/abc123"
-                    ],
-                    "completed": "https://merchant.example/orders/ord_abc123/success",
-                    "cancelled": "https://merchant.example/orders/ord_abc123/cancelled"
+                  "merchantGateway": {
+                    "summary": "Merchant gateway returns redirect URL",
+                    "value": {
+                      "redirect_url": "https://pay.gateway.example/checkout/session_abc123"
+                    }
                   }
                 }
               }
@@ -686,6 +729,114 @@
           },
           "401": {
             "description": "Authentication failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/create/{sessionId}": {
+      "post": {
+        "operationId": "createOrderPaymentGateway",
+        "summary": "Create order (Payment Gateway)",
+        "description": "Submit a signed order to a payment gateway's session endpoint. This endpoint is used when a payment gateway displays a QR code for the user to pay. The merchant scans the QR code (which contains this endpoint URL with a sessionId) and posts their signed order. The gateway uses the sessionId to identify the user and process the payment.\n\n**Flow:**\n1. User opens payment gateway app (wallet)\n2. Gateway generates temporary sessionId and displays QR code containing: `{gateway-endpoint}/orders/create/{sessionId}` and the gateway's OCID\n3. Merchant scans QR code\n4. Merchant constructs order, signs it, and POSTs to this endpoint\n5. Gateway invalidates session, retrieves user, processes payment\n6. Merchant polls the returned status URL or listens on transfer/webhook for payment confirmation",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "description": "Temporary session ID generated by the payment gateway. This ID is ephemeral and used to identify the user without exposing their user ID.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-ID"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Timestamp"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Nonce"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Signature"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderCreateGatewayRequest"
+              },
+              "example": {
+                "order": {
+                  "id": "ord_abc123",
+                  "ocid": 500,
+                  "reference": "POS-001",
+                  "amount": "25.00",
+                  "currency": "USD",
+                  "items": [
+                    {
+                      "id": "item_001",
+                      "name": "Burger Combo",
+                      "quantity": 1,
+                      "price": "25.00"
+                    }
+                  ],
+                  "memo": "Order #42",
+                  "createdAt": 1706313600,
+                  "expiresAt": 1706400000
+                },
+                "signature": "a1b2c3d4e5f6...merchant_sig"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Order received and payment is being processed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderCreatePaymentGatewayResponse"
+                },
+                "example": {
+                  "urls": {
+                    "status": "https://gateway.example/orders/ord_abc123/status"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or signature",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found or expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Session already used",
             "content": {
               "application/json": {
                 "schema": {
@@ -1597,6 +1748,93 @@
           "txid": {
             "type": "string",
             "description": "Transaction ID of the payment"
+          }
+        }
+      },
+      "OrderCreateGatewayRequest": {
+        "type": "object",
+        "required": [
+          "order",
+          "signature"
+        ],
+        "description": "Request to submit a signed order to a gateway",
+        "properties": {
+          "order": {
+            "$ref": "#/components/schemas/Order"
+          },
+          "signature": {
+            "type": "string",
+            "description": "Merchant's secp256k1 signature of the canonicalized order JSON"
+          }
+        }
+      },
+      "OrderCreateMerchantResponse": {
+        "type": "object",
+        "required": [
+          "order",
+          "signature"
+        ],
+        "description": "Response from merchant containing the signed order",
+        "properties": {
+          "order": {
+            "$ref": "#/components/schemas/Order"
+          },
+          "signature": {
+            "type": "string",
+            "description": "Merchant's secp256k1 signature of the canonicalized order JSON"
+          },
+          "urls": {
+            "type": "object",
+            "description": "URLs for order lifecycle",
+            "properties": {
+              "status": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to check order payment status"
+              },
+              "cancel": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to cancel the order"
+              }
+            }
+          }
+        }
+      },
+      "OrderCreatePaymentGatewayResponse": {
+        "type": "object",
+        "required": [
+          "urls"
+        ],
+        "description": "Response from payment gateway after receiving a signed order",
+        "properties": {
+          "urls": {
+            "type": "object",
+            "required": [
+              "status"
+            ],
+            "description": "URLs for order lifecycle",
+            "properties": {
+              "status": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to poll for order payment status"
+              }
+            }
+          }
+        }
+      },
+      "OrderCreateMerchantGatewayResponse": {
+        "type": "object",
+        "required": [
+          "redirect_url"
+        ],
+        "description": "Response from merchant gateway with redirect URL for user payment",
+        "properties": {
+          "redirect_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL to redirect the user to complete payment"
           }
         }
       }

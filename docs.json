@@ -29,6 +29,7 @@
               "guides/protocol/request-authentication",
               "guides/protocol/transaction-proofs",
               "guides/protocol/settlement-flow",
+              "guides/protocol/merchant-orders",
               "guides/protocol/error-codes",
               "guides/protocol/security",
               "guides/protocol/faq",
@@ -56,6 +57,9 @@
               "api-reference/endpoint/payment-create",
               "api-reference/endpoint/payment-settle",
               "api-reference/endpoint/order-create",
+              "api-reference/endpoint/order-create-merchant",
+              "api-reference/endpoint/order-create-payment-gateway",
+              "api-reference/endpoint/order-create-merchant-gateway",
               "api-reference/endpoint/order-status",
               "api-reference/endpoint/verify"
             ]
@@ -86,7 +90,8 @@
               "api-reference/endpoint/transfer-create",
               "api-reference/endpoint/payment-create",
               "api-reference/endpoint/payment-settle",
-              "api-reference/endpoint/order-create",
+              "api-reference/endpoint/order-create-payment-gateway",
+              "api-reference/endpoint/order-create-merchant-gateway",
               "api-reference/endpoint/verify"
             ]
           }
@@ -109,7 +114,7 @@
               "api-reference/endpoint/transfer-create",
               "api-reference/endpoint/payment-create",
               "api-reference/endpoint/payment-settle",
-              "api-reference/endpoint/order-create",
+              "api-reference/endpoint/order-create-merchant",
               "api-reference/endpoint/order-status",
               "api-reference/endpoint/verify"
             ]
