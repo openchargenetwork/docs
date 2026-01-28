@@ -33,23 +33,26 @@
                   "name": "MTN Mobile Money Uganda",
                   "description": "Mobile money service for Uganda",
                   "icon": "https://mtn.co.ug/icon.png",
-                  "publicKey": "a34b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b",
-                  "endpoint": "https://api.mtn.co.ug/opencharge",
-                  "capabilities": [
-                    "payment.receive",
-                    "payment.settle"
-                  ],
-                  "settlement": {
-                    "currencies": [
-                      "UGX",
-                      "USD"
+                  "config": {
+                    "publicKey": "a34b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b",
+                    "endpoint": "https://api.mtn.co.ug/opencharge",
+                    "capabilities": [
+                      "payment.receive",
+                      "payment.settle"
                     ],
-                    "accepts": [
-                      100,
-                      101,
-                      102
-                    ]
+                    "settlement": {
+                      "currencies": [
+                        "UGX",
+                        "USD"
+                      ],
+                      "accepts": [
+                        100,
+                        101,
+                        102
+                      ]
+                    }
                   },
+                  "signature": "a1b2c3d4e5f6...7f1b",
                   "contact": "integrations@mtn.co.ug"
                 }
               }
@@ -580,8 +583,8 @@
     "/orders/create": {
       "post": {
         "operationId": "createOrder",
-        "summary": "Create order",
-        "description": "This endpoint has two implementations depending on who hosts it:\n\n**Merchant Implementation:** Payment apps call this endpoint to request a signed order from the merchant. The merchant creates the order, signs it, and returns it with status URLs.\n\n**Merchant Gateway Implementation:** Merchants call this endpoint on their merchant gateway to initiate a payment. The gateway returns a redirect URL where the merchant should send the user to complete payment.",
+        "summary": "Create order (Merchant)",
+        "description": "Payment apps call this endpoint to request a signed order from a merchant. The merchant creates the order, signs it, and returns it with status URLs. The payment app can then process payment and notify the merchant via the status URL.",
         "parameters": [
           {
             "$ref": "#/components/parameters/X-OC-ID"
@@ -601,19 +604,44 @@
           "content": {
             "application/json": {
               "schema": {
-                "oneOf": [
+                "$ref": "#/components/schemas/OrderCreateRequest"
+              },
+              "example": {
+                "id": "ord_abc123",
+                "ocid": 500,
+                "reference": "store-42",
+                "amount": "15.00",
+                "currency": "USD",
+                "items": [
                   {
-                    "$ref": "#/components/schemas/OrderCreateRequest"
+                    "id": "item_001",
+                    "name": "Large Coffee",
+                    "quantity": 2,
+                    "price": "5.00"
                   },
                   {
-                    "$ref": "#/components/schemas/OrderCreateGatewayRequest"
+                    "id": "item_002",
+                    "name": "Croissant",
+                    "quantity": 1,
+                    "price": "5.00"
                   }
-                ]
-              },
-              "examples": {
-                "merchant": {
-                  "summary": "Payment app requesting order from merchant",
-                  "value": {
+                ],
+                "memo": "Table 5",
+                "expiresAt": 1706400000
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed order returned successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderCreateMerchantResponse"
+                },
+                "example": {
+                  "order": {
                     "id": "ord_abc123",
                     "ocid": 500,
                     "reference": "store-42",
@@ -634,84 +662,17 @@
                       }
                     ],
                     "memo": "Table 5",
-                    "expiresAt": 1706400000
-                  }
-                },
-                "merchantGateway": {
-                  "summary": "Merchant submitting order to merchant gateway",
-                  "value": {
-                    "order": {
-                      "id": "ord_xyz789",
-                      "ocid": 500,
-                      "reference": "checkout-session-123",
-                      "amount": "99.99",
-                      "currency": "USD",
-                      "memo": "Online purchase",
-                      "createdAt": 1706313600,
-                      "expiresAt": 1706400000
-                    },
-                    "signature": "a1b2c3d4e5f6...merchant_sig"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Order processed successfully. Response varies by implementer type.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/OrderCreateMerchantResponse"
-                    },
-                    {
-                      "$ref": "#/components/schemas/OrderCreateMerchantGatewayResponse"
-                    }
-                  ]
-                },
-                "examples": {
-                  "merchant": {
-                    "summary": "Merchant returns signed order",
-                    "value": {
-                      "order": {
-                        "id": "ord_abc123",
-                        "ocid": 500,
-                        "reference": "store-42",
-                        "amount": "15.00",
-                        "currency": "USD",
-                        "items": [
-                          {
-                            "id": "item_001",
-                            "name": "Large Coffee",
-                            "quantity": 2,
-                            "price": "5.00"
-                          },
-                          {
-                            "id": "item_002",
-                            "name": "Croissant",
-                            "quantity": 1,
-                            "price": "5.00"
-                          }
-                        ],
-                        "memo": "Table 5",
-                        "createdAt": 1706313600,
-                        "expiresAt": 1706400000
-                      },
-                      "signature": "a1b2c3d4e5f6...7f1b",
-                      "urls": {
-                        "status": "https://merchant.example/orders/ord_abc123/status",
-                        "cancel": "https://merchant.example/orders/ord_abc123/cancel"
-                      }
-                    }
+                    "createdAt": 1706313600,
+                    "expiresAt": 1706400000,
+                    "accepts": [100, 101, 102]
                   },
-                  "merchantGateway": {
-                    "summary": "Merchant gateway returns redirect URL",
-                    "value": {
-                      "redirect_url": "https://pay.gateway.example/checkout/session_abc123"
-                    }
+                  "signature": "a1b2c3d4e5f6...7f1b",
+                  "urls": {
+                    "order": [
+                      "https://merchant.example/orders/ord_abc123"
+                    ],
+                    "completed": "https://merchant.example/checkout/success",
+                    "cancelled": "https://merchant.example/checkout/cancelled"
                   }
                 }
               }
@@ -719,6 +680,91 @@
           },
           "400": {
             "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/checkout": {
+      "post": {
+        "operationId": "checkoutOrder",
+        "summary": "Checkout order (Merchant Gateway)",
+        "description": "Merchants call this endpoint on their merchant gateway to initiate a hosted checkout. The merchant submits their signed order along with callback URLs. The gateway returns a redirect URL where the merchant should send the user to complete payment on the gateway's hosted page.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/X-OC-ID"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Timestamp"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Nonce"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Signature"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderCheckoutRequest"
+              },
+              "example": {
+                "order": {
+                  "id": "ord_xyz789",
+                  "ocid": 500,
+                  "reference": "checkout-session-123",
+                  "amount": "99.99",
+                  "currency": "USD",
+                  "memo": "Online purchase",
+                  "createdAt": 1706313600,
+                  "expiresAt": 1706400000,
+                  "accepts": [100, 101]
+                },
+                "signature": "a1b2c3d4e5f6...merchant_sig",
+                "urls": {
+                  "order": ["https://merchant.example/orders/ord_xyz789"],
+                  "completed": "https://merchant.example/checkout/success",
+                  "cancelled": "https://merchant.example/checkout/cancelled"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Checkout session created, redirect URL returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderCheckoutResponse"
+                },
+                "example": {
+                  "redirect_url": "https://pay.gateway.example/checkout/session_abc123"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or signature",
             "content": {
               "application/json": {
                 "schema": {
@@ -792,9 +838,17 @@
                   ],
                   "memo": "Order #42",
                   "createdAt": 1706313600,
-                  "expiresAt": 1706400000
+                  "expiresAt": 1706400000,
+                  "accepts": [100, 101, 102]
                 },
-                "signature": "a1b2c3d4e5f6...merchant_sig"
+                "signature": "a1b2c3d4e5f6...merchant_sig",
+                "urls": {
+                  "order": [
+                    "https://merchant.example/orders/ord_abc123"
+                  ],
+                  "completed": "https://merchant.example/checkout/success",
+                  "cancelled": "https://merchant.example/checkout/cancelled"
+                }
               }
             }
           }
@@ -944,9 +998,8 @@
         "required": [
           "opencharge",
           "name",
-          "publicKey",
-          "endpoint",
-          "capabilities"
+          "config",
+          "signature"
         ],
         "description": "Metadata document hosted at the URL registered in the Router Registry. Contains everything other services need to interact with your OCID.",
         "properties": {
@@ -969,6 +1022,28 @@
             "format": "uri",
             "description": "URL to service logo/icon"
           },
+          "config": {
+            "$ref": "#/components/schemas/OCIDConfig"
+          },
+          "signature": {
+            "type": "string",
+            "description": "secp256k1 signature of the canonicalized config JSON. Proves the config was set by the key holder."
+          },
+          "contact": {
+            "type": "string",
+            "description": "Integration support contact (email or URL)"
+          }
+        }
+      },
+      "OCIDConfig": {
+        "type": "object",
+        "required": [
+          "publicKey",
+          "endpoint",
+          "capabilities"
+        ],
+        "description": "Payment-critical configuration that is signed by the OCID owner. Changes to this object require a new signature.",
+        "properties": {
           "publicKey": {
             "type": "string",
             "pattern": "^[a-fA-F0-9]{128}$",
@@ -1015,10 +1090,6 @@
                 "description": "OCIDs accepted for settlement proofs"
               }
             }
-          },
-          "contact": {
-            "type": "string",
-            "description": "Integration support contact (email or URL)"
           }
         }
       },
@@ -1595,6 +1666,13 @@
           "createdAt": {
             "type": "integer",
             "description": "Unix timestamp of order creation"
+          },
+          "accepts": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "OCIDs accepted for payment settlement. If specified, the merchant will only accept payments via these settlement providers. If empty the accept list from the merchant's OCID metadata is used."
           }
         }
       },
@@ -1755,7 +1833,8 @@
         "type": "object",
         "required": [
           "order",
-          "signature"
+          "signature",
+          "urls"
         ],
         "description": "Request to submit a signed order to a gateway",
         "properties": {
@@ -1765,6 +1844,34 @@
           "signature": {
             "type": "string",
             "description": "Merchant's secp256k1 signature of the canonicalized order JSON"
+          },
+          "urls": {
+            "type": "object",
+            "required": [
+              "completed",
+              "cancelled"
+            ],
+            "description": "Callback URLs for order lifecycle",
+            "properties": {
+              "order": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "description": "URLs where the order can be retrieved"
+              },
+              "completed": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to redirect user after successful payment"
+              },
+              "cancelled": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to redirect user if payment is cancelled"
+              }
+            }
           }
         }
       },
@@ -1785,17 +1892,29 @@
           },
           "urls": {
             "type": "object",
-            "description": "URLs for order lifecycle",
+            "required": [
+              "completed",
+              "cancelled"
+            ],
+            "description": "Callback URLs for order lifecycle",
             "properties": {
-              "status": {
-                "type": "string",
-                "format": "uri",
-                "description": "URL to check order payment status"
+              "order": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "description": "URLs where the order can be retrieved"
               },
-              "cancel": {
+              "completed": {
                 "type": "string",
                 "format": "uri",
-                "description": "URL to cancel the order"
+                "description": "URL to redirect user after successful payment"
+              },
+              "cancelled": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to redirect user if payment is cancelled"
               }
             }
           }
@@ -1824,17 +1943,63 @@
           }
         }
       },
-      "OrderCreateMerchantGatewayResponse": {
+      "OrderCheckoutRequest": {
+        "type": "object",
+        "required": [
+          "order",
+          "signature",
+          "urls"
+        ],
+        "description": "Request to initiate a hosted checkout on a merchant gateway",
+        "properties": {
+          "order": {
+            "$ref": "#/components/schemas/Order"
+          },
+          "signature": {
+            "type": "string",
+            "description": "Merchant's secp256k1 signature of the canonicalized order JSON"
+          },
+          "urls": {
+            "type": "object",
+            "required": [
+              "completed",
+              "cancelled"
+            ],
+            "description": "Callback URLs for order lifecycle",
+            "properties": {
+              "order": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "description": "URLs where the order can be retrieved"
+              },
+              "completed": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to redirect user after successful payment"
+              },
+              "cancelled": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to redirect user if payment is cancelled"
+              }
+            }
+          }
+        }
+      },
+      "OrderCheckoutResponse": {
         "type": "object",
         "required": [
           "redirect_url"
         ],
-        "description": "Response from merchant gateway with redirect URL for user payment",
+        "description": "Response from merchant gateway with redirect URL for hosted checkout",
         "properties": {
           "redirect_url": {
             "type": "string",
             "format": "uri",
-            "description": "URL to redirect the user to complete payment"
+            "description": "URL to redirect the user to complete payment on the gateway's hosted page"
           }
         }
       }

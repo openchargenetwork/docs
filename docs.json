@@ -59,7 +59,7 @@
               "api-reference/endpoint/order-create",
               "api-reference/endpoint/order-create-merchant",
               "api-reference/endpoint/order-create-payment-gateway",
-              "api-reference/endpoint/order-create-merchant-gateway",
+              "api-reference/endpoint/order-checkout",
               "api-reference/endpoint/order-status",
               "api-reference/endpoint/verify"
             ]
@@ -91,7 +91,7 @@
               "api-reference/endpoint/payment-create",
               "api-reference/endpoint/payment-settle",
               "api-reference/endpoint/order-create-payment-gateway",
-              "api-reference/endpoint/order-create-merchant-gateway",
+              "api-reference/endpoint/order-checkout",
               "api-reference/endpoint/verify"
             ]
           }

@@ -1,5 +1,5 @@
 ---
-title: "Create Order (Payment Gateway)"
+title: "Create Order (Qrcode)"
 description: "Payment gateways implement this endpoint to receive signed orders from merchants via QR code scanning. The merchant scans the user's QR code (containing the session URL) and posts their signed order."
 openapi: "POST /orders/create/{sessionId}"
 ---
@@ -8,7 +8,7 @@ openapi: "POST /orders/create/{sessionId}"
 For detailed flow diagrams, QR code format, and implementation guidance, see the [Merchant Orders guide](/guides/protocol/merchant-orders#payment-gateway-flow).
 </Info>
 
-**Implements:** Payment gateways
+**Implemented by:** Payment gateways
 
 **Called by:** Merchants
 

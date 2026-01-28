@@ -1,4 +1,29 @@
 ---
 title: "Create Transfer"
+description: "Request a payment gateway to create a transfer between accounts"
 openapi: "POST /transfer/create"
 ---
+
+## Identifying Parties
+
+The `from` and `to` objects identify the sender and recipient of a transfer. While OCID is the primary identifier, payment gateways may support additional identifiers for custom use cases.
+
+### Primary Identifier
+
+| Field | Description |
+|-------|-------------|
+| `ocid` | OpenCharge ID - the standard identifier for transfers between registered participants |
+
+### Custom Identifiers
+
+Payment gateways may support additional identifiers depending on their capabilities. Merchants should confirm support with their payment gateway before using these.
+
+| Field | Use Case |
+|-------|----------|
+| `phoneNumber` | Mobile money transfers, particularly in Africa and emerging markets where gateways can initiate transfers via separate authentication pipelines |
+| `cryptoAddress` | Crypto gateways transferring to blockchain addresses |
+| `bankAccount` | Direct bank credits between accounts |
+
+<Warning>
+When implementing custom identifiers, payment gateways **must** obtain explicit consent from their end users (not merchants) before debiting accounts. The consent and authentication process is gateway-specific and beyond the scope of this documentation.
+</Warning>
