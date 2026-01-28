@@ -902,6 +902,53 @@
         }
       }
     },
+    "/inventory": {
+      "get": {
+        "operationId": "getInventory",
+        "summary": "Get inventory",
+        "description": "Returns the merchant's full inventory. Designed for small inventories such as vending machines or kiosks. Payment apps call this endpoint to display available items before creating an order.",
+        "responses": {
+          "200": {
+            "description": "Inventory retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryResponse"
+                },
+                "example": {
+                  "ocid": 500,
+                  "currency": "USD",
+                  "items": [
+                    {
+                      "id": "item_001",
+                      "name": "Coca-Cola",
+                      "description": "330ml can",
+                      "price": "2.50",
+                      "quantity": 15,
+                      "min_qty": 1,
+                      "max_qty": 5,
+                      "images": ["https://merchant.example/images/coke.jpg"],
+                      "url": "https://merchant.example/products/coca-cola"
+                    },
+                    {
+                      "id": "item_002",
+                      "name": "Snickers Bar",
+                      "description": "52g chocolate bar",
+                      "price": "1.75",
+                      "quantity": 8,
+                      "min_qty": 1,
+                      "max_qty": 10,
+                      "images": ["https://merchant.example/images/snickers.jpg"],
+                      "url": "https://merchant.example/products/snickers"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/orders/{orderId}/status": {
       "get": {
         "operationId": "getOrderStatus",
@@ -1066,6 +1113,7 @@
                 "transfer.webhook",
                 "orders.create",
                 "orders.status",
+                "inventory.get",
                 "verify.txid"
               ]
             },
@@ -1121,6 +1169,7 @@
                 "transfer.webhook",
                 "orders.create",
                 "orders.status",
+                "inventory.get",
                 "verify.txid"
               ]
             },
@@ -2000,6 +2049,88 @@
             "type": "string",
             "format": "uri",
             "description": "URL to redirect the user to complete payment on the gateway's hosted page"
+          }
+        }
+      },
+      "InventoryResponse": {
+        "type": "object",
+        "required": [
+          "ocid",
+          "items"
+        ],
+        "description": "Merchant's full inventory listing",
+        "properties": {
+          "ocid": {
+            "type": "integer",
+            "description": "Merchant's OCID"
+          },
+          "currency": {
+            "type": "string",
+            "description": "Default ISO 4217 currency code for item prices"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InventoryItem"
+            },
+            "description": "Available inventory items"
+          }
+        }
+      },
+      "InventoryItem": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "price"
+        ],
+        "description": "An item available for purchase",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique item identifier"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name"
+          },
+          "description": {
+            "type": "string",
+            "description": "Item description"
+          },
+          "price": {
+            "type": "string",
+            "description": "Unit price as decimal string"
+          },
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217 currency code (overrides response-level currency)"
+          },
+          "quantity": {
+            "type": "integer",
+            "description": "Available stock quantity"
+          },
+          "min_qty": {
+            "type": "integer",
+            "description": "Minimum order quantity",
+            "default": 1
+          },
+          "max_qty": {
+            "type": "integer",
+            "description": "Maximum order quantity"
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "description": "URLs to item images"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL to item details page"
           }
         }
       }
