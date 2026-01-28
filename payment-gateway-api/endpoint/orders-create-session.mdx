@@ -21,7 +21,7 @@ This endpoint receives orders when a merchant scans your user's QR code. The `se
 ## Implementation
 
 ```javascript
-app.post('/orders/create/:sessionId', verifyMerchantAuth, async (req, res) => {
+app.post('/orders/create/:sessionId', signatureAuth, async (req, res) => {
   const { sessionId } = req.params;
   const { order, signature, urls } = req.body;
   const merchantOcid = parseInt(req.headers['x-oc-id']);

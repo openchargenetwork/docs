@@ -53,7 +53,7 @@ app.post('/app/pay', authenticateUser, async (req, res) => {
 Merchant scans the QR and POSTs their order:
 
 ```javascript
-app.post('/orders/create/:sessionId', verifyMerchantAuth, async (req, res) => {
+app.post('/orders/create/:sessionId', signatureAuth, async (req, res) => {
   const { sessionId } = req.params;
   const { order, signature, urls } = req.body;
 

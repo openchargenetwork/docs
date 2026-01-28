@@ -192,7 +192,7 @@ CREATE UNIQUE INDEX idx_merchants_ocid ON merchants(ocid);
 After onboarding, authenticate all requests from merchants:
 
 ```javascript
-async function verifyMerchantAuth(req, res, next) {
+async function signatureAuth(req, res, next) {
   const ocid = parseInt(req.headers['x-oc-id']);
   const timestamp = req.headers['x-oc-timestamp'];
   const nonce = req.headers['x-oc-nonce'];
@@ -239,7 +239,7 @@ async function verifyMerchantAuth(req, res, next) {
 }
 
 // Use middleware on protected routes
-app.post('/orders/checkout', verifyMerchantAuth, handleCheckout);
+app.post('/orders/checkout', signatureAuth, handleCheckout);
 ```
 
 ## Next Steps
