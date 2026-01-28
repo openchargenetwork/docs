@@ -333,7 +333,7 @@
       "post": {
         "operationId": "createTransfer",
         "summary": "Create transfer",
-        "description": "Request a payment gateway to create a transfer from your OCID to another OCID. Completed Transfers must provide a signed proof attesting the transfer was completed. Implementations should POST the payment proof to the sender or/and recipient's /transfer/webhook endpoint if supported. Only sign completed transfers.",
+        "description": "Request a merchant gateway to create a transfer from your OCID to another OCID. Completed Transfers must provide a signed proof attesting the transfer was completed. Implementations should POST the payment proof to the sender or/and recipient's /transfer/webhook endpoint if supported. Only sign completed transfers.",
         "parameters": [
           {
             "$ref": "#/components/parameters/X-OC-ID"
