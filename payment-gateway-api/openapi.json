@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Opencharge Payment Gateway API",
-    "description": "API specification for payment gateways (wallet apps) integrating with the Opencharge protocol. Payment gateways onboard end users, maintain their wallets, and help them pay merchants.",
+    "description": "API specification for payment gateways integrating with the Opencharge protocol. Payment gateways help end users pay merchants through wallet apps or hosted checkout pages.",
     "version": "0.1.0",
     "license": {
       "name": "MIT"
@@ -35,6 +35,7 @@
                     "publicKey": "a34b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b",
                     "endpoint": "https://api.wallet.example/opencharge",
                     "capabilities": [
+                      "checkout.create",
                       "orders.create.session",
                       "transfer.create",
                       "transfer.webhook"
@@ -79,6 +80,80 @@
                     "accepts": [100, 101]
                   }
                 }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/checkout/create": {
+      "post": {
+        "operationId": "createCheckout",
+        "summary": "Create checkout session",
+        "description": "Merchant Gateways POST orders to this endpoint to create a hosted checkout session. Returns a checkout URL where the end user will be redirected to complete payment.",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-OC-ID" },
+          { "$ref": "#/components/parameters/X-OC-Timestamp" },
+          { "$ref": "#/components/parameters/X-OC-Nonce" },
+          { "$ref": "#/components/parameters/X-OC-Signature" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CheckoutCreateRequest" },
+              "example": {
+                "order": {
+                  "id": "ord_abc123",
+                  "ocid": 500,
+                  "reference": "INV-001",
+                  "amount": "99.99",
+                  "currency": "USD",
+                  "items": [
+                    { "id": "item_001", "name": "Product A", "quantity": 1, "price": "99.99" }
+                  ],
+                  "memo": "Order from Merchant Store",
+                  "createdAt": 1706313600,
+                  "expiresAt": 1706400000,
+                  "accepts": [100, 101, 102]
+                },
+                "signature": "a1b2c3d4e5f6...merchant_sig",
+                "merchantOcid": 500,
+                "urls": {
+                  "success": "https://merchant.example/checkout/success",
+                  "cancel": "https://merchant.example/checkout/cancel"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Checkout session created",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CheckoutCreateResponse" },
+                "example": {
+                  "checkout_url": "https://checkout.wallet.example/pay/sess_xyz789",
+                  "session_id": "sess_xyz789",
+                  "expires_at": 1706400000
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or signature",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
               }
             }
           },
@@ -370,7 +445,7 @@
             "type": "array",
             "items": {
               "type": "string",
-              "enum": ["orders.create.session", "transfer.create", "transfer.webhook"]
+              "enum": ["checkout.create", "orders.create.session", "transfer.create", "transfer.webhook"]
             }
           },
           "settlement": {
@@ -423,6 +498,31 @@
           "name": { "type": "string" },
           "quantity": { "type": "number" },
           "price": { "type": "string" }
+        }
+      },
+      "CheckoutCreateRequest": {
+        "type": "object",
+        "required": ["order", "signature", "merchantOcid", "urls"],
+        "properties": {
+          "order": { "$ref": "#/components/schemas/Order" },
+          "signature": { "type": "string", "description": "Merchant's signature on the order" },
+          "merchantOcid": { "type": "integer", "description": "The merchant's OCID" },
+          "urls": {
+            "type": "object",
+            "properties": {
+              "success": { "type": "string", "format": "uri", "description": "Redirect URL after successful payment" },
+              "cancel": { "type": "string", "format": "uri", "description": "Redirect URL if user cancels" }
+            }
+          }
+        }
+      },
+      "CheckoutCreateResponse": {
+        "type": "object",
+        "required": ["checkout_url", "session_id"],
+        "properties": {
+          "checkout_url": { "type": "string", "format": "uri", "description": "URL to redirect user to for payment" },
+          "session_id": { "type": "string", "description": "Unique checkout session identifier" },
+          "expires_at": { "type": "integer", "description": "Unix timestamp when session expires" }
         }
       },
       "OrderSessionRequest": {

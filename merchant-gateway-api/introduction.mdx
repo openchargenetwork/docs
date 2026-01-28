@@ -1,11 +1,11 @@
 ---
 title: "Merchant Gateway API"
-description: "API reference for merchant gateways providing hosted checkout for online merchants"
+description: "API reference for merchant gateways that onboard merchants and process settlements"
 ---
 
 ## Overview
 
-A Merchant Gateway provides hosted checkout pages for online merchants. When a merchant integrates with your gateway, their customers are redirected to your payment page to complete transactions.
+A Merchant Gateway onboards merchants and helps them receive payments through the Opencharge network. You receive orders from merchants, coordinate with Payment Gateways (which handle end-user payments), and process settlements back to merchants.
 
 <Card
   title="OpenAPI Specification"
@@ -19,9 +19,9 @@ A Merchant Gateway provides hosted checkout pages for online merchants. When a m
 
 As a merchant gateway, you provide:
 
-1. **Hosted checkout page** - A payment UI where customers complete purchases
-2. **Multiple payment methods** - Credit cards, wallets, bank transfers, etc.
-3. **Settlement processing** - Moving funds from customers to merchants
+1. **Merchant onboarding** - Register and verify merchants on your platform
+2. **Order routing** - Receive orders and return redirect URLs to Payment Gateways
+3. **Settlement processing** - Receive payment proofs and settle funds to merchants
 4. **Webhook notifications** - Informing merchants when payments complete
 
 ## Base URL
@@ -32,7 +32,7 @@ Host your API at the endpoint you register in the Router Registry:
 https://pay.yourgateway.com/opencharge
 ```
 
-## Endpoints
+## Endpoints you implement on your server
 
 | Endpoint | Method | Description |
 | -------- | ------ | ----------- |
@@ -47,32 +47,40 @@ https://pay.yourgateway.com/opencharge
 
 ## Flow
 
+The Merchant Gateway sits between merchants and Payment Gateways. When a merchant receives an order, you route it to a Payment Gateway that handles the actual payment UI.
+
 ```
-┌──────────┐      ┌──────────┐      ┌───────────────┐
-│ Customer │      │ Merchant │      │ Your Gateway  │
-└────┬─────┘      └────┬─────┘      └───────┬───────┘
-     │                 │                    │
-     │ 1. Checkout     │                    │
-     │────────────────>│                    │
-     │                 │                    │
-     │                 │ 2. POST /orders/   │
-     │                 │    checkout        │
-     │                 │───────────────────>│
-     │                 │                    │
-     │                 │ 3. redirect_url    │
-     │                 │<───────────────────│
-     │                 │                    │
-     │ 4. Redirect     │                    │
-     │<────────────────│                    │
-     │                 │                    │
-     │ 5. Pay on your page                  │
-     │─────────────────────────────────────>│
-     │                 │                    │
-     │                 │ 6. Webhook (proof) │
-     │                 │<───────────────────│
-     │                 │                    │
-     │ 7. Redirect back                     │
-     │<─────────────────────────────────────│
+┌──────────┐   ┌──────────┐   ┌─────────────────┐   ┌─────────────────┐
+│ Customer │   │ Merchant │   │ Merchant Gateway│   │ Payment Gateway │
+└────┬─────┘   └────┬─────┘   └───────┬─────────┘   └───────┬─────────┘
+     │              │                 │                     │
+     │ 1. Checkout  │                 │                     │
+     │─────────────>│                 │                     │
+     │              │                 │                     │
+     │              │ 2. POST /orders/│                     │
+     │              │    checkout     │                     │
+     │              │────────────────>│                     │
+     │              │                 │                     │
+     │              │ 3. redirect_url │                     │
+     │              │    (to Payment  │                     │
+     │              │     Gateway)    │                     │
+     │              │<────────────────│                     │
+     │              │                 │                     │
+     │ 4. Redirect to Payment Gateway │                     │
+     │<─────────────│                 │                     │
+     │              │                 │                     │
+     │ 5. Pay on Payment Gateway's checkout page            │
+     │─────────────────────────────────────────────────────>│
+     │              │                 │                     │
+     │              │                 │ 6. Webhook (proof)  │
+     │              │                 │<────────────────────│
+     │              │                 │                     │
+     │              │ 7. Webhook      │                     │
+     │              │    (proof)      │                     │
+     │              │<────────────────│                     │
+     │              │                 │                     │
+     │ 8. Redirect back               │                     │
+     │<─────────────────────────────────────────────────────│
 ```
 
 ## Authentication
@@ -95,8 +103,8 @@ When you receive an order at `/orders/checkout`:
 1. **Verify the merchant signature** on the order
 2. **Check the merchant is registered** with your gateway
 3. **Validate order details** (amount, currency, expiration)
-4. **Create a checkout session** and store the order
-5. **Return the redirect URL** to your payment page
+4. **Select a Payment Gateway** to handle the payment
+5. **Return the redirect URL** to the Payment Gateway's checkout page
 
 ```javascript
 app.post('/orders/checkout', async (req, res) => {
@@ -118,19 +126,25 @@ app.post('/orders/checkout', async (req, res) => {
     });
   }
 
-  // 3. Create checkout session
-  const session = await createCheckoutSession(order, urls, merchantOcid);
+  // 3. Create session and forward to a Payment Gateway
+  const session = await createSession(order, urls, merchantOcid);
+  const paymentGateway = await selectPaymentGateway(order);
+  const checkoutUrl = await forwardToPaymentGateway(paymentGateway, session);
 
-  // 4. Return redirect URL
+  // 4. Return redirect URL to Payment Gateway's checkout page
   res.json({
-    redirect_url: `https://pay.yourgateway.com/checkout/${session.id}`
+    redirect_url: checkoutUrl
   });
 });
 ```
 
+## Receiving Payment Proofs
+
+When a Payment Gateway completes a payment, it sends a proof to your `/transfer/webhook`. You then forward this proof to the merchant.
+
 ## Notifying Merchants
 
-After payment completes, send a signed proof to the merchant's `/transfer/webhook`:
+After receiving a payment proof, send a signed proof to the merchant's `/transfer/webhook`:
 
 ```javascript
 async function notifyMerchant(session, proof) {
@@ -161,15 +175,29 @@ async function notifyMerchant(session, proof) {
 
 ## Settlement
 
-You must be able to settle with the merchant. Check the order's `accepts` array:
+As a Merchant Gateway, you sit between Payment Gateways and merchants. You must be able to settle proofs you receive.
 
-- If you're in `accepts`, you can sign proofs directly
-- If not, you need to settle via a common third party
+When you receive a proof from a Payment Gateway:
+- Verify the proof is valid and signed by a trusted Payment Gateway
+- Forward the proof (or create your own proof) to the merchant
+- Ensure the merchant trusts you as a settlement provider (your OCID is in their `accepts` array)
 
 ```javascript
-function canSettleDirectly(order) {
-  return order.accepts.includes(YOUR_OCID);
-}
+// When receiving a proof from a Payment Gateway
+app.post('/transfer/webhook', async (req, res) => {
+  const { proof, signature } = req.body;
+  const paymentGatewayOcid = req.headers['x-oc-id'];
+
+  // Verify the Payment Gateway's signature
+  if (!verifyProof(proof, signature, paymentGatewayOcid)) {
+    return res.status(400).json({ error: { code: 'INVALID_PROOF' } });
+  }
+
+  // Forward to merchant (if merchant trusts us)
+  await notifyMerchant(proof);
+
+  res.json({ status: 'accepted' });
+});
 ```
 
 ## Error Handling

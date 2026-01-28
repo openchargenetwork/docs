@@ -1,6 +1,6 @@
 ---
 title: "Submit Order to Session"
-description: "Receive orders from merchants when they scan your user's QR code"
+description: "Receive orders when merchants scan your app user's QR code"
 openapi: "POST /orders/create/{sessionId}"
 ---
 
@@ -20,6 +20,44 @@ This endpoint receives orders when a merchant scans your user's QR code. The `se
 
 ## Implementation
 
+
+## Session Management
+
+When your mobile app user requests to display a qrcode for the merchant to scan
+generate secure, single-use sessions and generate a qrCode.
+
+```javascript
+// This is your internal app endpoint and it is not part of api the spec.
+// Lets assume you mobile app calls this endpoint to get teh QrCode.
+
+app.post('/app/pay', authenticateUser, async (req, res) => {
+  const user = req.user;
+
+  // Generate session
+  const sessionId = crypto.randomBytes(16).toString('hex');
+
+  await db.createSession({
+    id: sessionId,
+    userId: user.id,
+    status: 'pending',
+    expiresAt: Date.now() + 5 * 60 * 1000 // 5 minutes
+  });
+
+  // Build QR payload -> url points to endpoint /orders/create/:sessionId below
+  const qrPayload = {
+    ocid: YOUR_OCID,
+    order: `https://api.yourwallet.com/opencharge/orders/create/${sessionId}`,
+    expiresAt: Math.floor((Date.now() + 5 * 60 * 1000) / 1000)
+  };
+
+  res.json({
+    sessionId,
+    qrPayload,
+    qrCode: await generateQRCode(JSON.stringify(qrPayload))
+  });
+});
+```
+The merchant app scans the qrCode, and posts the order and signature to the session order url you set in the qrcode.
 ```javascript
 app.post('/orders/create/:sessionId', signatureAuth, async (req, res) => {
   const { sessionId } = req.params;
@@ -79,7 +117,7 @@ app.post('/orders/create/:sessionId', signatureAuth, async (req, res) => {
     urls
   });
 
-  // 8. Notify user's app (websocket/push)
+  // 8. If your user needs to confirm orders, Notify your user's app to load the order. (websocket/push)
   await notifyUser(session.userId, 'payment_request', {
     merchantOcid,
     order,
@@ -92,43 +130,13 @@ app.post('/orders/create/:sessionId', signatureAuth, async (req, res) => {
       status: `https://api.yourwallet.com/orders/${order.id}/status`
     }
   });
-});
-```
 
-## Session Management
-
-Generate secure, single-use sessions:
-
-```javascript
-app.post('/app/pay', authenticateUser, async (req, res) => {
-  const user = req.user;
-
-  // Generate session
-  const sessionId = crypto.randomBytes(16).toString('hex');
-
-  await db.createSession({
-    id: sessionId,
-    userId: user.id,
-    status: 'pending',
-    expiresAt: Date.now() + 5 * 60 * 1000 // 5 minutes
-  });
-
-  // Build QR payload
-  const qrPayload = {
-    ocid: YOUR_OCID,
-    order: `https://api.yourwallet.com/opencharge/orders/create/${sessionId}`,
-    expiresAt: Math.floor((Date.now() + 5 * 60 * 1000) / 1000)
-  };
-
-  res.json({
-    sessionId,
-    qrPayload,
-    qrCode: await generateQRCode(JSON.stringify(qrPayload))
-  });
 });
 ```
 
 ## Processing Payment After User Confirms
+
+If your user needs to confirm orders, implement an internal endpoint to process confirmations.
 
 ```javascript
 app.post('/app/confirm/:sessionId', authenticateUser, async (req, res) => {
@@ -148,33 +156,29 @@ app.post('/app/confirm/:sessionId', authenticateUser, async (req, res) => {
   }
 
   // Process payment
-  await processPayment(session);
+  await processPayment(session, user);
 
   res.json({ success: true });
 });
+```
 
-async function processPayment(session) {
+## Settlement
+
+After collecting payment from the user, you must settle with the merchant through a trusted gateway. See the [Settlement Guide](/payment-gateway-api/settlement) for the complete details.
+
+```javascript
+async function processPayment(session, user) {
   // Debit user
-  await db.debitUser(session.userId, session.order.amount);
+  await db.debitUser(user.id, session.order.amount);
 
-  // Create proof
-  const proof = {
-    txid: generateTxid(),
-    issuer: YOUR_OCID,
-    from: { ocid: YOUR_OCID, reference: `user_${session.userId}` },
-    to: { ocid: session.order.ocid, reference: session.order.id },
-    amount: session.order.amount,
-    currency: session.order.currency,
-    timestamp: Math.floor(Date.now() / 1000),
-    memo: `Payment for ${session.order.id}`
-  };
-
-  const signature = signProof(proof);
-
-  // Send to merchant webhook
-  await sendMerchantWebhook(session.merchantOcid, proof, signature);
+  // Settle with merchant - see Settlement Guide for strategies
+  const proof = await settlePayment(user, session.order, session.merchantOcid);
 
   // Update session
   await db.updateSession(session.id, { status: 'completed', proof });
 }
 ```
+
+<Card title="Settlement Guide" icon="arrow-right" href="/payment-gateway-api/settlement">
+  Learn about direct settlement, partner reserves, and third-party settlement
+</Card>

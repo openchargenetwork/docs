@@ -9,7 +9,6 @@
   },
   "favicon": "/images/favicon.svg",
   "openapi": [
-    "api-reference/openapi.json",
     "merchant-api/openapi.json",
     "merchant-gateway-api/openapi.json",
     "payment-gateway-api/openapi.json"
@@ -44,43 +43,7 @@
           }
         ]
       },
-      {
-        "tab": "API reference",
-        "groups": [
-          {
-            "group": "Overview",
-            "pages": [
-              "api-reference/introduction"
-            ]
-          },
-          {
-            "group": "Endpoints",
-            "pages": [
-              "api-reference/endpoint/metadata",
-              "api-reference/endpoint/capabilities",
-              "api-reference/endpoint/transfer-create",
-              "api-reference/endpoint/transfer-webhook",
-              "api-reference/endpoint/payment-create",
-              "api-reference/endpoint/payment-settle",
-              "api-reference/endpoint/order-create",
-              "api-reference/endpoint/order-create-merchant",
-              "api-reference/endpoint/order-create-payment-gateway",
-              "api-reference/endpoint/order-checkout",
-              "api-reference/endpoint/order-status",
-              "api-reference/endpoint/inventory",
-              "api-reference/endpoint/verify"
-            ]
-          },
-           {
-            "group": "SDKs",
-            "pages": [
-              "api-reference/sdks/official",
-              "api-reference/sdks/third-party"
-            ]
-          }
-        ]
-      },
-      {
+            {
         "tab": "Merchant Gateway API",
         "groups": [
           {
@@ -123,12 +86,14 @@
           {
             "group": "Guides",
             "pages": [
-              "payment-gateway-api/payment-flows"
+              "payment-gateway-api/payment-flows",
+              "payment-gateway-api/settlement"
             ]
           },
           {
             "group": "Endpoints",
             "pages": [
+              "payment-gateway-api/endpoint/checkout-create",
               "payment-gateway-api/endpoint/orders-create-session",
               "payment-gateway-api/endpoint/transfer-create"
             ]

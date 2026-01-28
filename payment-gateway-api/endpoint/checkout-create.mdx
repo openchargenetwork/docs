@@ -1,0 +1,79 @@
+---
+title: "Create Checkout Session"
+description: "Receive orders from Merchant Gateways and return a checkout URL"
+openapi: "POST /checkout/create"
+---
+
+## Overview
+
+Merchant Gateways call this endpoint to create a hosted checkout session. You return a URL where the end user will be redirected to complete payment on your checkout page.
+
+## When This Is Called
+
+1. A customer initiates checkout at a merchant's website
+2. The merchant sends the order to their Merchant Gateway
+3. The Merchant Gateway forwards the order to your Payment Gateway
+4. You create a checkout session and return the URL
+5. The customer is redirected to your checkout page
+
+## Implementation
+
+```javascript
+app.post('/checkout/create', signatureAuth, async (req, res) => {
+  const { order, signature, merchantOcid, urls } = req.body;
+  const merchantGatewayOcid = req.headers['x-oc-id'];
+
+  // 1. Verify the order signature matches the merchant
+  const merchant = await fetchMerchantMetadata(merchantOcid);
+  if (!verifyOrderSignature(order, signature, merchant.config.publicKey)) {
+    return res.status(400).json({
+      error: { code: 'INVALID_SIGNATURE', message: 'Order signature invalid' }
+    });
+  }
+
+  // 2. Create checkout session
+  const session = await db.createCheckoutSession({
+    id: crypto.randomUUID(),
+    merchantOcid,
+    merchantGatewayOcid,
+    order,
+    signature,
+    urls,
+    status: 'pending',
+    expiresAt: Date.now() + 30 * 60 * 1000
+  });
+
+  // 3. Return checkout URL
+  res.json({
+    checkout_url: `https://checkout.yourgateway.com/${session.id}`,
+    expires_at: Math.floor(session.expiresAt / 1000)
+  });
+});
+```
+
+## After Payment
+
+When the user completes payment on your checkout page:
+
+1. Settle with the merchant (see [Settlement Guide](/payment-gateway-api/settlement))
+2. Redirect the user to the `urls.success` URL
+
+```javascript
+async function completeCheckout(session, user) {
+  // Settle the payment - see Settlement Guide for details
+  const proof = await settlePayment(user, session.order, session.merchantOcid);
+
+  // Update session
+  await db.updateCheckoutSession(session.id, {
+    status: 'completed',
+    proof
+  });
+
+  // Redirect user to success URL
+  return session.urls?.success || '/success';
+}
+```
+
+<Card title="Settlement Guide" icon="arrow-right" href="/payment-gateway-api/settlement">
+  Learn about the different ways to settle payments with merchants
+</Card>

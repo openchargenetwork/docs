@@ -9,24 +9,26 @@ This guide covers the different ways collections can be settled on the merchant 
 
 ## Payment Methods
 
-Your gateway can receive payment  through several channels:
+Your gateway can receive payment through several channels:
 
 | Method | Endpoint | Source |
 |--------|----------|--------|
-| Hosted checkout | `/orders/checkout` | redirect to your own payment webapp|
+| Checkout redirect | `/orders/checkout` | Redirect to a Payment Gateway |
 | Internal transfer | `/transfer/create` | Your own payment apps / mobile apps |
 | Partner transfer | `/transfer/create` | 3rd party with reserve account |
 | Third-party settlement | `/payment/create` + `/payment/settle` | 3rd party payment app |
 | Direct webhook | `/transfer/webhook` | Settlement provider |
 
-## Hosted Checkout
+## Checkout Redirect
 
-The most common flow for e-commerce merchants. You simply redirect the enduser to your hosted payment webapp.
+The most common flow for e-commerce merchants. The merchant sends an order to your `/orders/checkout` endpoint, and you return a redirect URL to a Payment Gateway's checkout page. The Payment Gateway handles collecting payment from the end user.
 
-see [Payment Gateway Api](/payment-gateway-api/introduction) for how to implement a Payment Gateway Webapp.
+<Note>
+The Payment Gateway can be your own service or a third-party. See [Payment Gateway API](/payment-gateway-api/introduction) to learn how Payment Gateways work.
+</Note>
 
 ```
-Customer → Merchant → Your backend → Customer → Your payment webapp → Your backend → Merchant
+Customer → Merchant → Merchant Gateway → Customer → Payment Gateway → Merchant Gateway → Merchant
 ```
 
 ### Implement a redirect mechanism
@@ -36,37 +38,41 @@ Customer → Merchant → Your backend → Customer → Your payment webapp → 
 app.post('/orders/checkout', signatureAuth, async (req, res) => {
   const { order, signature, urls } = req.body;
 
-  // store the order 
+  // Store the order
   const merchantOrder = await db.storeOrder(order, signature, urls, req.merchant);
 
+  // Forward to a Payment Gateway
+  // This could be your own Payment Gateway service, or a third-party
+  const paymentGateway = await selectPaymentGateway(order);
+  const checkoutSession = await paymentGateway.createSession(merchantOrder);
+
   res.json({
-    redirect_url: `https://pay.yourgateway.com/checkout/${merchantOrder.id}`
+    redirect_url: checkoutSession.checkout_url
   });
 });
 
-// 2. Display payment page in your Payment webapp
-app.get('/checkout/:orderId', async (req, res) => {
-  const merchantOrder = await db.getOrder(req.params.orderId);
+// 2. Receive payment proof from Payment Gateway
+app.post('/transfer/webhook', signatureAuth, async (req, res) => {
+  const { proof, signature } = req.body;
+  const paymentGatewayOcid = req.headers['x-oc-id'];
 
-  if (!merchantOrder || merchantOrder.status !== 'pending') {
-    return res.redirect('/error');
+  // Verify the Payment Gateway's signature
+  if (!verifyProof(proof, signature, paymentGatewayOcid)) {
+    return res.status(400).json({ error: { code: 'INVALID_PROOF' } });
   }
 
-  // Render payment page with order details
-  res.render('checkout', {
-    merchantOrder,
-    merchant: await db.getMerchantByOcid(merchantOrder.order.ocid)
-  });
-});
+  // Credit merchant and forward the proof
+  const merchant = await db.getMerchantByOcid(proof.to.ocid);
+  await creditMerchant(merchant, proof);
+  await notifyMerchant(merchant, proof);
 
-// 3. Your payment webapp should now collect the payment and notify the merchant backend via /transfer/create
-  
-  see next section.
+  res.json({ status: 'accepted' });
+});
 ```
 
 ## Internal Transfers
 
-Process transfer requests from your own mobile app or web wallet.  When your webapp or mobile app sends calls this endpoint, ensure the payment is or has been collected, eg by deduction balance, visa etc.
+Process transfer requests from your own mobile app or web wallet.  When your webapp or mobile app calls this endpoint, ensure the payment is or has been collected, eg by deduction balance, visa etc.
 The example below assumes we deduct the users balance.,
 
 ```javascript

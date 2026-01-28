@@ -76,58 +76,23 @@ async function handleInternalTransfer(req, res) {
 When your user scans a merchant's QR code:
 
 ```javascript
-async function payMerchantOrder(userId, merchantOrder) {
+async function payMerchantOrder(user, merchantOrder) {
   // 1. Verify the order
   const merchant = await fetchMerchantMetadata(merchantOrder.ocid);
   if (!verifyOrderSignature(merchantOrder.order, merchantOrder.signature, merchant.config.publicKey)) {
     throw new Error('Invalid order signature');
   }
 
-  // 2. Check we can settle
-  const canSettleDirectly = merchantOrder.order.accepts.includes(YOUR_OCID);
+  // 2. Debit user
+  await db.debitUser(user.id, merchantOrder.order.amount);
 
-  if (canSettleDirectly) {
-    // Direct settlement - we sign the proof
-    return executeDirectTransfer(userId, merchantOrder);
-  }
+  // 3. Settle with merchant - see Settlement Guide
+  const proof = await settlePayment(user, merchantOrder.order, merchantOrder.ocid);
 
-  // 3. Find a settlement path
-  const settlementPath = await findSettlementPath(merchantOrder.order.accepts);
-
-  if (!settlementPath) {
-    throw new Error('Cannot settle with this merchant');
-  }
-
-  // 4. Execute via settlement path
-  return executeSettlementChain(userId, merchantOrder, settlementPath);
+  return proof;
 }
 ```
 
-## Settlement Paths
-
-If the merchant doesn't accept your OCID directly, find a common settlement provider:
-
-```javascript
-async function findSettlementPath(merchantAccepts) {
-  // Check if we have a reserve with any accepted provider
-  for (const providerOcid of merchantAccepts) {
-    const reserve = await db.getReserve(providerOcid);
-    if (reserve && reserve.balance > 0) {
-      return { via: providerOcid, type: 'direct_reserve' };
-    }
-  }
-
-  // Check if we can settle via a third party
-  for (const providerOcid of OUR_SETTLEMENT_PARTNERS) {
-    const capabilities = await fetchCapabilities(providerOcid);
-    const common = capabilities.settlement.accepts.filter(
-      ocid => merchantAccepts.includes(ocid)
-    );
-    if (common.length > 0) {
-      return { via: providerOcid, to: common[0], type: 'third_party' };
-    }
-  }
-
-  return null;
-}
-```
+<Card title="Settlement Guide" icon="arrow-right" href="/payment-gateway-api/settlement">
+  Learn about the different ways to settle payments with merchants
+</Card>

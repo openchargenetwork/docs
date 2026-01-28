@@ -58,9 +58,9 @@ Used for inventory-based payments such as vending machines, mobile top-up, or an
 - Provide status URLs for payment apps to check order status
 
 **For Payment Apps:**
-- Verify the signature using the merchant's public key from their [metadata](/api-reference/endpoint/metadata)
+- Verify the signature using the merchant's public key from their [metadata](/merchant-api/endpoint/metadata)
 - Check `expiresAt` before processing
-- Use the status URL to confirm payment or listen on [transfer/webhook](/api-reference/endpoint/transfer-webhook)
+- Use the status URL to confirm payment or listen on [transfer/webhook](/merchant-api/endpoint/transfer-webhook)
 
 ## Payment Gateway Flow
 
@@ -208,7 +208,7 @@ Used for web-based checkout where the merchant redirects users to a hosted payme
 
 **For Merchants:**
 - Always sign orders before submitting
-- Implement [transfer/webhook](/api-reference/endpoint/transfer-webhook) for reliable payment confirmation
+- Implement [transfer/webhook](/merchant-api/endpoint/transfer-webhook) for reliable payment confirmation
 - Don't trust user redirects alone - wait for webhook confirmation
 
 <Warning>
@@ -224,7 +224,7 @@ This ensures:
 - **Integrity** - The order details haven't been tampered with
 - **Non-repudiation** - The merchant cannot deny creating the order
 
-Payment apps and gateways verify signatures using the merchant's public key from their [metadata](/api-reference/endpoint/metadata).
+Payment apps and gateways verify signatures using the merchant's public key from their [metadata](/merchant-api/endpoint/metadata).
 
 ## Choosing a Pattern
 

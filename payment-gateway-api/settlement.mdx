@@ -1,0 +1,231 @@
+---
+title: "Settlement"
+description: "How to settle payments with merchants through their trusted gateways"
+---
+
+Merchants only accept proofs signed by their trusted settlement providers (OCIDs listed in the order's `accepts` array). As a Payment Gateway, you must settle through a Merchant Gateway the merchant trusts.
+
+## Settlement Strategies
+
+There are three ways to settle:
+
+| Strategy | When to Use | Endpoint |
+|----------|-------------|----------|
+| Direct | You ARE the merchant's gateway | Credit directly + `/transfer/webhook` |
+| Partner Reserve | You have a reserve account with an accepted gateway | `/transfer/create` |
+| Common Third Party | You share a settlement provider with an accepted gateway | `/payment/create` + `/payment/settle` |
+
+## Finding a Settlement Path
+
+```javascript
+async function findSettlementPath(merchantAccepts) {
+  // Option 1: We are the merchant's gateway (direct settlement)
+  if (merchantAccepts.includes(YOUR_OCID)) {
+    return { type: 'direct', gatewayOcid: YOUR_OCID };
+  }
+
+  // Option 2: We have a reserve account with one of their accepted gateways
+  for (const gatewayOcid of merchantAccepts) {
+    if (await hasReserveAccountWith(gatewayOcid)) {
+      return { type: 'partner_reserve', gatewayOcid };
+    }
+  }
+
+  // Option 3: Find a Merchant Gateway we share a common third party with
+  for (const gatewayOcid of merchantAccepts) {
+    const commonProvider = await findCommonSettlementProvider(gatewayOcid);
+    if (commonProvider) {
+      return { type: 'common_third_party', gatewayOcid, providerOcid: commonProvider };
+    }
+  }
+
+  return null; // No settlement path available
+}
+```
+
+## Direct Settlement
+
+If your OCID is in the merchant's `accepts` array, you are also acting as their Merchant Gateway. Credit them directly and send the proof to their webhook.
+
+```javascript
+async function settleDirectly(user, order, merchantOcid) {
+  // Credit merchant account (you maintain their balance)
+  await db.creditMerchant(merchantOcid, order.amount, order.currency);
+
+  // Create and sign proof
+  const proof = {
+    txid: generateTxid(),
+    issuer: YOUR_OCID,
+    from: { ocid: YOUR_OCID, reference: `user_${user.id}` },
+    to: { ocid: merchantOcid, reference: order.id },
+    amount: order.amount,
+    currency: order.currency,
+    timestamp: Math.floor(Date.now() / 1000)
+  };
+
+  const signature = signProof(proof);
+
+  // Send proof to merchant's webhook (IPN)
+  const merchant = await fetchMerchantMetadata(merchantOcid);
+  await fetch(`${merchant.config.endpoint}/transfer/webhook`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...createAuthHeaders(YOUR_OCID, YOUR_PRIVATE_KEY)
+    },
+    body: JSON.stringify({ proof, signature })
+  });
+
+  return proof;
+}
+```
+
+## Settlement via Partner Reserve
+
+If you have a reserve account with one of the merchant's accepted gateways, call their `/transfer/create` endpoint. The gateway debits your reserve, credits the merchant, and sends the proof to the merchant's webhook.
+
+```javascript
+async function settleViaPartnerReserve(user, order, merchantOcid, gatewayOcid) {
+  const gateway = await fetchMetadata(gatewayOcid);
+
+  // Call partner gateway's /transfer/create with order info
+  // The gateway will:
+  // 1. Debit our reserve account
+  // 2. Credit the merchant
+  // 3. Send proof to merchant's webhook
+  const response = await fetch(`${gateway.config.endpoint}/transfer/create`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...createAuthHeaders(YOUR_OCID, YOUR_PRIVATE_KEY)
+    },
+    body: JSON.stringify({
+      from: { ocid: YOUR_OCID, reference: `user_${user.id}` },
+      to: { ocid: merchantOcid, reference: order.id },
+      amount: order.amount,
+      currency: order.currency,
+      order: {
+        id: order.id,
+        urls: order.urls || []
+      }
+    })
+  });
+
+  // Gateway returns proof signed by them
+  const { proof, signature } = await response.json();
+  return proof;
+}
+```
+
+<Note>
+This could also be your own Merchant Gateway service if you run both a Payment Gateway and Merchant Gateway.
+</Note>
+
+## Settlement via Common Third Party
+
+If you don't have a reserve account with the Merchant Gateway, but share a common settlement provider:
+
+1. Call `/payment/create` on the Merchant Gateway to start settlement and see what OCIDs they accept
+2. Call `/transfer/create` on a common third party to credit the Merchant Gateway's OCID
+3. Call `/payment/settle` on the Merchant Gateway with that proof
+4. The Merchant Gateway credits the merchant and sends proof to their webhook
+
+```javascript
+async function settleViaCommonThirdParty(user, order, merchantOcid, gatewayOcid) {
+  const gateway = await fetchMetadata(gatewayOcid);
+
+  // 1. Create pending payment - get list of accepted settlement providers
+  const createResponse = await fetch(`${gateway.config.endpoint}/payment/create`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...createAuthHeaders(YOUR_OCID, YOUR_PRIVATE_KEY)
+    },
+    body: JSON.stringify({
+      to: merchantOcid,
+      amount: order.amount,
+      currency: order.currency,
+      order: {
+        id: order.id,
+        urls: order.urls || []
+      }
+    })
+  });
+
+  const { txid, settlement } = await createResponse.json();
+  // settlement.accepts = [100, 101, 102] - OCIDs the gateway will accept proofs from
+
+  // 2. Find a common settlement provider we have an account with
+  const commonProviderOcid = await findCommonProvider(settlement.accepts);
+  if (!commonProviderOcid) {
+    throw new Error('No common settlement provider found');
+  }
+
+  // 3. Transfer to the Merchant Gateway's OCID via the common provider
+  const provider = await fetchMetadata(commonProviderOcid);
+  const transferResponse = await fetch(`${provider.config.endpoint}/transfer/create`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...createAuthHeaders(YOUR_OCID, YOUR_PRIVATE_KEY)
+    },
+    body: JSON.stringify({
+      from: { ocid: YOUR_OCID, reference: `user_${user.id}` },
+      to: { ocid: gatewayOcid, reference: txid },  // Credit the Merchant Gateway
+      amount: order.amount,
+      currency: order.currency
+    })
+  });
+
+  const settlementProof = await transferResponse.json();
+
+  // 4. Complete payment with the proof from the common provider
+  const settleResponse = await fetch(`${gateway.config.endpoint}/payment/settle`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...createAuthHeaders(YOUR_OCID, YOUR_PRIVATE_KEY)
+    },
+    body: JSON.stringify({
+      txid,
+      proof: settlementProof.proof,
+      signature: settlementProof.signature
+    })
+  });
+
+  // Gateway credits merchant and returns signed proof
+  const { proof } = await settleResponse.json();
+  return proof;
+}
+```
+
+## Putting It Together
+
+Use this function after collecting payment from the user:
+
+```javascript
+async function settlePayment(user, order, merchantOcid) {
+  const path = await findSettlementPath(order.accepts);
+
+  if (!path) {
+    throw new Error('No settlement path available');
+  }
+
+  switch (path.type) {
+    case 'direct':
+      return await settleDirectly(user, order, merchantOcid);
+
+    case 'partner_reserve':
+      return await settleViaPartnerReserve(user, order, merchantOcid, path.gatewayOcid);
+
+    case 'common_third_party':
+      return await settleViaCommonThirdParty(user, order, merchantOcid, path.gatewayOcid);
+  }
+}
+```
+
+## Related
+
+- [Merchant Gateway /transfer/create](/merchant-gateway-api/endpoint/transfer-create) - How Merchant Gateways process transfers
+- [Merchant Gateway /payment/create](/merchant-gateway-api/endpoint/payment-create) - Start two-step settlement
+- [Merchant Gateway /payment/settle](/merchant-gateway-api/endpoint/payment-settle) - Complete two-step settlement

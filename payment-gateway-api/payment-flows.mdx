@@ -1,19 +1,161 @@
 ---
 title: "Payment Flows"
-description: "How to process payments in your wallet app"
+description: "How to process payments through your payment gateway"
 ---
 
 This guide covers the different ways users can pay merchants through your payment gateway.
 
 ## Overview
 
-Your users can pay merchants in three ways:
+Your payment gateway can collect payments in several ways:
 
-1. **Display QR code** - Merchant scans, submits order to you
-2. **Scan merchant QR** - You fetch and process the order
-3. **Scan inventory QR** - Browse items, create order, pay
+1. **Hosted checkout** - Users redirected to your checkout page from Merchant Gateways
+2. **Display QR code** - User shows QR, merchant scans and submits order
+3. **Scan merchant QR** - User scans merchant QR, you fetch and process the order
+4. **Scan inventory QR** - User browses items, creates order, pays
 
-## Flow 1: User Displays QR Code
+## Flow 1: Hosted Checkout
+
+The most common flow for e-commerce. Merchant Gateways redirect end users to your hosted checkout page to complete payment.
+
+### Step 1: Receive Order from Merchant Gateway
+
+```javascript
+// Merchant Gateway forwards an order to your checkout
+app.post('/checkout/create', signatureAuth, async (req, res) => {
+  const { order, signature, urls, merchantOcid } = req.body;
+  const merchantGatewayOcid = req.headers['x-oc-id'];
+
+  // Verify the order signature matches the merchant
+  const merchant = await fetchMerchantMetadata(merchantOcid);
+  if (!verifyOrderSignature(order, signature, merchant.config.publicKey)) {
+    return res.status(400).json({
+      error: { code: 'INVALID_SIGNATURE', message: 'Order signature invalid' }
+    });
+  }
+
+  // Create checkout session
+  const session = await db.createCheckoutSession({
+    id: crypto.randomUUID(),
+    merchantOcid,
+    merchantGatewayOcid,
+    order,
+    signature,
+    urls,
+    status: 'pending',
+    expiresAt: Date.now() + 30 * 60 * 1000
+  });
+
+  // Return checkout URL
+  res.json({
+    checkout_url: `https://checkout.yourgateway.com/${session.id}`
+  });
+});
+```
+
+### Step 2: Display Checkout Page
+
+Render your payment UI with the order details:
+
+```javascript
+app.get('/checkout/:sessionId', async (req, res) => {
+  const session = await db.getCheckoutSession(req.params.sessionId);
+
+  if (!session || session.status !== 'pending') {
+    return res.redirect('/error?code=invalid_session');
+  }
+
+  if (session.expiresAt < Date.now()) {
+    return res.redirect(session.urls?.cancel || '/error?code=expired');
+  }
+
+  // Get merchant info for display
+  const merchant = await fetchMerchantMetadata(session.merchantOcid);
+
+  res.render('checkout', {
+    session,
+    merchant: {
+      name: merchant.business?.name,
+      logo: merchant.business?.logo
+    },
+    paymentMethods: await getAvailablePaymentMethods(session)
+  });
+});
+```
+
+### Step 3: Process Payment
+
+When user submits payment:
+
+```javascript
+app.post('/checkout/:sessionId/pay', async (req, res) => {
+  const { paymentMethod, paymentDetails } = req.body;
+  const session = await db.getCheckoutSession(req.params.sessionId);
+
+  // Validate session
+  if (!session || session.status !== 'pending') {
+    return res.status(400).json({ error: 'Invalid session' });
+  }
+
+  // Process payment based on method (card, bank, wallet balance, etc.)
+  const paymentResult = await processPayment(paymentMethod, paymentDetails, session);
+
+  if (!paymentResult.success) {
+    return res.status(400).json({ error: paymentResult.error });
+  }
+
+  // Create proof
+  const proof = {
+    txid: generateTxid(),
+    issuer: YOUR_OCID,
+    from: { ocid: YOUR_OCID, reference: paymentResult.reference },
+    to: { ocid: session.merchantOcid, reference: session.order.id },
+    amount: session.order.amount,
+    currency: session.order.currency,
+    timestamp: Math.floor(Date.now() / 1000)
+  };
+
+  const signature = signProof(proof);
+
+  // Notify Merchant Gateway
+  await notifyMerchantGateway(session.merchantGatewayOcid, proof, signature);
+
+  // Update session
+  await db.updateCheckoutSession(session.id, {
+    status: 'completed',
+    proof,
+    signature
+  });
+
+  // Redirect to success URL
+  res.json({
+    success: true,
+    redirect: session.urls?.success || '/success'
+  });
+});
+```
+
+### Step 4: Notify Merchant Gateway
+
+Send payment proof to the Merchant Gateway:
+
+```javascript
+async function notifyMerchantGateway(merchantGatewayOcid, proof, signature) {
+  const gateway = await fetchMetadata(merchantGatewayOcid);
+  const webhookUrl = `${gateway.config.endpoint}/transfer/webhook`;
+
+  await fetch(webhookUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...createAuthHeaders(YOUR_OCID, YOUR_PRIVATE_KEY)
+    },
+    body: JSON.stringify({ proof, signature })
+  });
+}
+```
+
+## Flow 2: User Displays QR Code
 
 Best for retail where merchants have scanners/cameras.
 
@@ -111,7 +253,7 @@ app.post('/app/confirm/:sessionId', authenticateUser, async (req, res) => {
 });
 ```
 
-## Flow 2: User Scans Merchant QR
+## Flow 3: User Scans Merchant QR
 
 Best for kiosks, vending machines, or when merchant displays QR.
 
@@ -178,23 +320,17 @@ app.post('/app/pay-order', authenticateUser, async (req, res) => {
     return res.status(402).json({ error: 'Insufficient funds' });
   }
 
-  // 4. Check settlement path
-  const settlementPath = await findSettlementPath(order.accepts);
-  if (!settlementPath) {
-    return res.status(400).json({ error: 'Cannot settle with this merchant' });
-  }
+  // 4. Debit user
+  await db.debitUser(user.id, order.amount);
 
-  // 5. Execute payment
-  const proof = await executePayment(user, order, settlementPath);
-
-  // 6. Notify merchant
-  await sendMerchantWebhook(merchantOcid, proof);
+  // 5. Settle with merchant - see Settlement Guide
+  const proof = await settlePayment(user, order, merchantOcid);
 
   res.json({ success: true, txid: proof.txid });
 });
 ```
 
-## Flow 3: Inventory Browsing
+## Flow 4: Inventory Browsing
 
 For vending machines or merchants with small catalogs.
 
@@ -276,111 +412,22 @@ app.post('/app/create-order', authenticateUser, async (req, res) => {
 });
 ```
 
-## Settlement Strategies
+## Settlement
 
-### Direct Settlement
-
-If your OCID is in the merchant's `accepts`:
+After collecting payment from the user through any of the flows above, you must settle with the merchant. The settlement process is the same regardless of how you received the order.
 
 ```javascript
-async function settleDirectly(user, order) {
+async function processPayment(user, order, merchantOcid) {
   // Debit user
   await db.debitUser(user.id, order.amount);
 
-  // Create proof signed by you
-  const proof = {
-    txid: generateTxid(),
-    issuer: YOUR_OCID,
-    from: { ocid: YOUR_OCID, reference: `user_${user.id}` },
-    to: { ocid: order.ocid, reference: order.id },
-    amount: order.amount,
-    currency: order.currency,
-    timestamp: Math.floor(Date.now() / 1000)
-  };
+  // Settle with merchant
+  const proof = await settlePayment(user, order, merchantOcid);
 
-  return { proof, signature: signProof(proof) };
+  return proof;
 }
 ```
 
-### Via Partner Reserve
-
-If you have a reserve account with an accepted provider:
-
-```javascript
-async function settleViaReserve(user, order, providerOcid) {
-  // Debit user
-  await db.debitUser(user.id, order.amount);
-
-  // Request transfer from provider
-  const provider = await fetchMetadata(providerOcid);
-  const response = await fetch(`${provider.config.endpoint}/transfer/create`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...createAuthHeaders(YOUR_OCID, YOUR_PRIVATE_KEY)
-    },
-    body: JSON.stringify({
-      from: { ocid: YOUR_OCID, reference: `reserve` },
-      to: { ocid: order.ocid, reference: order.id },
-      amount: order.amount,
-      currency: order.currency,
-      order: { id: order.id, urls: [] }
-    })
-  });
-
-  return response.json(); // { proof, signature }
-}
-```
-
-### Via Third-Party Settlement
-
-If you need to go through a common third party:
-
-```javascript
-async function settleViaThirdParty(user, order, merchantGatewayOcid) {
-  // 1. Get proof from common settlement provider
-  const settlementProof = await getSettlementProof(user, order.amount);
-
-  // 2. Use that proof to pay the merchant gateway
-  const gateway = await fetchMetadata(merchantGatewayOcid);
-  const response = await fetch(`${gateway.config.endpoint}/payment/settle`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...createAuthHeaders(YOUR_OCID, YOUR_PRIVATE_KEY)
-    },
-    body: JSON.stringify({
-      txid: pendingPayment.txid,
-      proof: settlementProof.proof,
-      signature: settlementProof.signature
-    })
-  });
-
-  return response.json();
-}
-```
-
-## Sending Merchant Webhooks
-
-Always notify merchants of successful payments:
-
-```javascript
-async function sendMerchantWebhook(merchantOcid, proof, signature) {
-  const merchant = await fetchMerchantMetadata(merchantOcid);
-  const webhookUrl = `${merchant.config.endpoint}/transfer/webhook`;
-
-  const response = await fetch(webhookUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...createAuthHeaders(YOUR_OCID, YOUR_PRIVATE_KEY)
-    },
-    body: JSON.stringify({ proof, signature })
-  });
-
-  if (!response.ok) {
-    // Queue for retry
-    await queueWebhookRetry(merchantOcid, proof, signature);
-  }
-}
-```
+<Card title="Settlement Guide" icon="arrow-right" href="/payment-gateway-api/settlement">
+  Learn about the three settlement strategies: direct, partner reserve, and common third party
+</Card>

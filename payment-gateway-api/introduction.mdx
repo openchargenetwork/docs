@@ -1,11 +1,11 @@
 ---
 title: "Payment Gateway API"
-description: "API reference for payment gateways (wallet apps) that help users pay merchants"
+description: "API reference for payment gateways that help end users complete payments"
 ---
 
 ## Overview
 
-A Payment Gateway (or Payment Service) is a wallet app that helps end users pay merchants. Your users don't need their own OCID - they use your app to make payments.
+A Payment Gateway helps end users pay merchants. This includes wallet apps where users scan QR codes, as well as hosted checkout pages where users are redirected to complete purchases. Your users don't need their own OCID - they use your service to make payments.
 
 <Card
   title="OpenAPI Specification"
@@ -19,10 +19,10 @@ A Payment Gateway (or Payment Service) is a wallet app that helps end users pay 
 
 As a payment gateway, you provide:
 
-1. **User wallets** - Maintain balances for your users
-2. **Payment flows** - QR code scanning and generation
-3. **Settlement** - Connect with merchant gateways to complete payments
-4. **Mobile/web app** - User interface for payments
+1. **Payment UI** - Hosted checkout pages or mobile wallet apps
+2. **User management** - Maintain wallets or payment methods for your users
+3. **Payment flows** - QR code scanning, checkout redirects, or both
+4. **Settlement** - Send payment proofs to merchants or Merchant Gateways
 
 ## Base URL
 
@@ -38,13 +38,55 @@ https://api.yourwallet.com/opencharge
 | -------- | ------ | ----------- |
 | `/metadata.json` | GET | Your gateway's public metadata |
 | `/capabilities` | GET | Partner-specific capabilities |
+| `/checkout/create` | POST | Create hosted checkout session |
 | `/orders/create/{sessionId}` | POST | Receive orders from merchants (QR flow) |
 | `/transfer/create` | POST | Process transfers |
 | `/transfer/webhook` | POST | Receive transfer notifications |
 
 ## Payment Flows
 
-### 1. Customer Displays QR (Merchant Scans)
+### 1. Hosted Checkout (Web Redirect)
+
+Merchant Gateway sends an order to you. End user is redirected to your checkout page to complete payment.
+
+```
+┌──────────┐   ┌──────────┐   ┌─────────────────┐   ┌──────────────┐
+│ Customer │   │ Merchant │   │ Merchant Gateway│   │ Your Gateway │
+└────┬─────┘   └────┬─────┘   └───────┬─────────┘   └──────┬───────┘
+     │              │                 │                    │
+     │ 1. Checkout  │                 │                    │
+     │─────────────>│                 │                    │
+     │              │                 │                    │
+     │              │ 2. POST /orders/│                    │
+     │              │    checkout     │                    │
+     │              │────────────────>│                    │
+     │              │                 │                    │
+     │              │                 │ 3. Forward order   │
+     │              │                 │───────────────────>│
+     │              │                 │                    │
+     │              │                 │ 4. checkout_url    │
+     │              │                 │<───────────────────│
+     │              │                 │                    │
+     │              │ 5. redirect_url │                    │
+     │              │<────────────────│                    │
+     │              │                 │                    │
+     │ 6. Redirect  │                 │                    │
+     │<─────────────│                 │                    │
+     │              │                 │                    │
+     │ 7. Select payment method & pay                      │
+     │────────────────────────────────────────────────────>│
+     │              │                 │                    │
+     │              │                 │ 8. Webhook (proof) │
+     │              │                 │<───────────────────│
+     │              │                 │                    │
+     │              │ 9. Webhook      │                    │
+     │              │<────────────────│                    │
+     │              │                 │                    │
+     │ 10. Redirect to success URL    │                    │
+     │<────────────────────────────────────────────────────│
+```
+
+### 3. Customer Displays QR (Merchant Scans)
 
 Your app generates a QR code for the user. Merchant scans it to request payment.
 
@@ -78,7 +120,7 @@ Your app generates a QR code for the user. Merchant scans it to request payment.
      │                  │────────────────>│
 ```
 
-### 2. Merchant Displays QR (Customer Scans)
+### 4. Merchant Displays QR (Customer Scans)
 
 Merchant displays a QR code with order info. Customer scans and pays.
 
