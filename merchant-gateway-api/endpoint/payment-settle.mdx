@@ -1,0 +1,142 @@
+---
+title: "Settle Payment"
+description: "Complete a pending payment with a settlement proof"
+openapi: "POST /payment/settle"
+---
+
+<Info>
+After creating a payment via `/payment/create`, payment apps submit a signed proof from an accepted settlement provider to complete the payment.
+</Info>
+
+## Flow
+
+1. Payment app creates pending payment via `/payment/create`
+2. Payment app transfers funds to your OCID via an accepted settlement provider
+3. Payment app receives signed proof from the settlement provider
+4. Payment app submits proof to your `/payment/settle`
+5. You verify proof, credit merchant, and return your own signed proof
+
+## Implementation
+
+```javascript
+app.post('/payment/settle', verifyAuth, async (req, res) => {
+  const { txid, proof, signature } = req.body;
+  const callerOcid = parseInt(req.headers['x-oc-id']);
+
+  // 1. Find the pending payment
+  const payment = await db.getPayment(txid);
+  if (!payment) {
+    return res.status(404).json({
+      error: { code: 'PAYMENT_NOT_FOUND', message: 'Payment not found' }
+    });
+  }
+
+  // 2. Check payment hasn't expired
+  if (payment.expiresAt < Date.now() / 1000) {
+    return res.status(400).json({
+      error: { code: 'PAYMENT_EXPIRED', message: 'Payment has expired' }
+    });
+  }
+
+  // 3. Check payment is still pending
+  if (payment.status !== 'pending_settlement') {
+    return res.status(400).json({
+      error: { code: 'INVALID_STATE', message: `Payment is ${payment.status}` }
+    });
+  }
+
+  // 4. Verify issuer is accepted
+  if (!ACCEPTED_SETTLEMENT_PROVIDERS.includes(proof.issuer)) {
+    return res.status(400).json({
+      error: { code: 'ISSUER_NOT_ACCEPTED', message: 'Settlement provider not accepted' }
+    });
+  }
+
+  // 5. Verify proof signature
+  const publicKey = await getPublicKey(proof.issuer);
+  const canonical = JSON.stringify(proof, Object.keys(proof).sort());
+  if (!secp256k1_verify(publicKey, signature, canonical)) {
+    return res.status(400).json({
+      error: { code: 'PROOF_SIGNATURE_INVALID', message: 'Invalid proof signature' }
+    });
+  }
+
+  // 6. Verify we are the recipient
+  if (proof.to.ocid !== YOUR_OCID) {
+    return res.status(400).json({
+      error: { code: 'INVALID_PROOF', message: 'Proof recipient mismatch' }
+    });
+  }
+
+  // 7. Verify amount matches
+  if (proof.amount !== payment.amount || proof.currency !== payment.currency) {
+    return res.status(400).json({
+      error: { code: 'AMOUNT_MISMATCH', message: 'Amount does not match payment' }
+    });
+  }
+
+  // 8. Complete payment
+  await db.completePayment(payment.id, proof.txid, proof.timestamp);
+
+  // 9. Credit merchant
+  await db.creditMerchant(payment.merchantOcid, payment.amount, payment.currency);
+
+  // 10. Create our proof for the merchant
+  const merchantProof = {
+    txid: payment.txid,
+    issuer: YOUR_OCID,
+    from: proof.from,
+    to: { ocid: payment.merchantOcid, reference: payment.orderId },
+    amount: payment.amount,
+    currency: payment.currency,
+    timestamp: Math.floor(Date.now() / 1000),
+    memo: `Payment settled for ${payment.orderId}`
+  };
+
+  const merchantSignature = signProof(merchantProof);
+
+  // 11. Notify merchant webhook
+  await notifyMerchant(payment.merchantOcid, merchantProof, merchantSignature);
+
+  // 12. Return our signed proof
+  res.json({
+    status: 'completed',
+    txid: payment.txid,
+    proof: merchantProof,
+    signature: merchantSignature
+  });
+});
+```
+
+## Validation Checklist
+
+Before completing a payment:
+
+- [ ] Payment exists and matches the `txid`
+- [ ] Payment hasn't expired
+- [ ] Payment is in `pending_settlement` state
+- [ ] Proof issuer is in your `accepts` list
+- [ ] Proof signature is valid
+- [ ] Proof recipient is your OCID
+- [ ] Proof amount matches payment amount
+
+## Response
+
+On success, return your signed proof that the payment app can also use:
+
+```json
+{
+  "status": "completed",
+  "txid": "gateway_payment_456",
+  "proof": {
+    "txid": "gateway_payment_456",
+    "issuer": 300,
+    "from": { "ocid": 200, "reference": "wallet_tx_123" },
+    "to": { "ocid": 500, "reference": "ord_abc123" },
+    "amount": "99.99",
+    "currency": "USD",
+    "timestamp": 1706500500
+  },
+  "signature": "gateway_sig_xyz..."
+}
+```

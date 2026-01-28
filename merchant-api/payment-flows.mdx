@@ -1,0 +1,411 @@
+---
+title: "Payment Flows"
+description: "How merchants initiate payments and receive confirmation through Opencharge"
+---
+
+As a merchant, you initiate payments by creating signed orders. How you deliver that order to a payment service depends on your integration scenario.
+
+## Overview
+
+There are three ways to initiate a payment:
+
+| Method | Scenario | You Provide |
+|--------|----------|-------------|
+| [Online Checkout](#online-checkout) | E-commerce, web apps | Redirect to gateway |
+| [Merchant QR Code](#merchant-qr-code) | POS, retail, kiosks | QR code for customer to scan |
+| [Inventory Display](#inventory-display) | Vending machines, catalogs | Product list for browsing |
+
+In all cases, payment is confirmed via the [transfer webhook](/merchant-api/endpoint/transfer-webhook).
+
+## Online Checkout
+
+For web-based checkout, redirect customers to a merchant gateway's hosted payment page.
+
+```
+┌──────────┐      ┌──────────┐      ┌──────────────────┐
+│ Customer │      │   You    │      │ Merchant Gateway │
+│ Browser  │      │ Backend  │      │  (Payment Page)  │
+└────┬─────┘      └────┬─────┘      └────────┬─────────┘
+     │                 │                     │
+     │ 1. Checkout     │                     │
+     │────────────────>│                     │
+     │                 │                     │
+     │                 │ 2. POST /orders/    │
+     │                 │    checkout         │
+     │                 │────────────────────>│
+     │                 │                     │
+     │                 │ 3. redirect_url     │
+     │                 │<────────────────────│
+     │                 │                     │
+     │ 4. Redirect     │                     │
+     │<────────────────│                     │
+     │                 │                     │
+     │ 5. Complete payment                   │
+     │──────────────────────────────────────>│
+     │                 │                     │
+     │                 │ 6. Webhook (proof)  │
+     │                 │<────────────────────│
+     │                 │                     │
+     │ 7. Return to site                     │
+     │<──────────────────────────────────────│
+```
+
+### Implementation
+
+1. **Create and sign the order** with your private key
+2. **POST to the gateway's** `/orders/checkout` endpoint
+3. **Redirect the customer** to the returned `redirect_url`
+4. **Receive payment proof** via your `/transfer/webhook` endpoint
+5. **Fulfill the order** once you have verified the proof
+
+```javascript
+// 1. Create the order
+const order = {
+  id: generateOrderId(),
+  ocid: YOUR_OCID,
+  amount: cart.total,
+  currency: "USD",
+  items: cart.items.map(item => ({
+    id: item.sku,
+    name: item.name,
+    quantity: item.qty,
+    price: item.price
+  })),
+  createdAt: Math.floor(Date.now() / 1000),
+  expiresAt: Math.floor(Date.now() / 1000) + 3600,
+  accepts: [100, 101, 102]  // Settlement providers you accept
+};
+
+// 2. Sign the order
+const signature = signOrder(order, YOUR_PRIVATE_KEY);
+
+// 3. Submit to merchant gateway
+const response = await fetch(`${GATEWAY_ENDPOINT}/orders/checkout`, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    ...createAuthHeaders(YOUR_OCID, YOUR_PRIVATE_KEY)
+  },
+  body: JSON.stringify({
+    order,
+    signature,
+    urls: {
+      order: [`https://yourstore.com/orders/${order.id}`],
+      completed: `https://yourstore.com/checkout/success?order=${order.id}`,
+      cancelled: `https://yourstore.com/checkout/cancelled?order=${order.id}`
+    }
+  })
+});
+
+const { redirect_url } = await response.json();
+
+// 4. Redirect customer
+res.redirect(redirect_url);
+```
+
+<Warning>
+Never rely on the customer returning to your site as payment confirmation. Always wait for the webhook proof before fulfilling orders.
+</Warning>
+
+## Merchant QR Code
+
+For in-person payments, display a QR code that payment apps scan. This works for retail POS, market stalls, or any face-to-face transaction.
+
+```
+┌──────────┐      ┌──────────┐      ┌─────────────┐
+│ Customer │      │   You    │      │ Payment App │
+│          │      │  (POS)   │      │  (Wallet)   │
+└────┬─────┘      └────┬─────┘      └──────┬──────┘
+     │                 │                   │
+     │ 1. Ready to pay │                   │
+     │────────────────>│                   │
+     │                 │                   │
+     │ 2. Display QR   │                   │
+     │<────────────────│                   │
+     │                 │                   │
+     │ 3. Scan QR      │                   │
+     │─────────────────────────────────────>
+     │                 │                   │
+     │                 │ 4. GET order URL  │
+     │                 │<──────────────────│
+     │                 │                   │
+     │                 │ 5. Signed order   │
+     │                 │──────────────────>│
+     │                 │                   │
+     │                 │ 6. Process payment│
+     │                 │                   │
+     │                 │ 7. Webhook (proof)│
+     │                 │<──────────────────│
+     │                 │                   │
+     │ 8. Confirmation │                   │
+     │<────────────────│                   │
+```
+
+### QR Code Format
+
+Create a QR code containing this JSON:
+
+```json
+{
+  "ocid": 500,
+  "order": "https://api.yourstore.com/opencharge/orders/ord_abc123",
+  "expiresAt": 1706400000
+}
+```
+
+The `order` URL points to where the payment app can fetch your signed order.
+
+### Implementation
+
+```javascript
+// 1. Create the order and store it
+const order = {
+  id: `ord_${crypto.randomUUID()}`,
+  ocid: YOUR_OCID,
+  reference: "POS-001",
+  amount: "25.00",
+  currency: "USD",
+  items: posItems,
+  createdAt: Math.floor(Date.now() / 1000),
+  expiresAt: Math.floor(Date.now() / 1000) + 300,  // 5 minutes
+  accepts: [100, 101, 102]
+};
+
+const signature = signOrder(order, YOUR_PRIVATE_KEY);
+await db.storeOrder(order.id, { order, signature });
+
+// 2. Generate QR code payload
+const qrPayload = {
+  ocid: YOUR_OCID,
+  order: `https://api.yourstore.com/opencharge/orders/${order.id}`,
+  expiresAt: order.expiresAt
+};
+
+// 3. Display QR code on POS screen
+displayQRCode(JSON.stringify(qrPayload));
+
+// 4. Wait for webhook confirmation
+await waitForPayment(order.id);
+```
+
+### Serving the Order
+
+When a payment app fetches your order URL, return the signed order:
+
+```javascript
+app.get('/orders/:orderId', async (req, res) => {
+  const stored = await db.getOrder(req.params.orderId);
+
+  if (!stored) {
+    return res.status(404).json({
+      error: { code: 'ORDER_NOT_FOUND', message: 'Order not found' }
+    });
+  }
+
+  if (stored.order.expiresAt < Date.now() / 1000) {
+    return res.status(410).json({
+      error: { code: 'ORDER_EXPIRED', message: 'Order has expired' }
+    });
+  }
+
+  res.json({
+    order: stored.order,
+    signature: stored.signature,
+    urls: {
+      order: [`https://api.yourstore.com/opencharge/orders/${stored.order.id}`],
+      completed: `https://yourstore.com/orders/${stored.order.id}/success`,
+      cancelled: `https://yourstore.com/orders/${stored.order.id}/cancelled`
+    }
+  });
+});
+```
+
+## Scanning Customer QR Codes
+
+Alternatively, if you have a barcode scanner (common in retail), you can scan a QR code displayed by the customer's payment app.
+
+```
+┌──────────┐      ┌─────────────┐      ┌──────────┐
+│ Customer │      │ Payment App │      │   You    │
+│          │      │  (Wallet)   │      │  (POS)   │
+└────┬─────┘      └──────┬──────┘      └────┬─────┘
+     │                   │                  │
+     │ 1. Open wallet    │                  │
+     │──────────────────>│                  │
+     │                   │                  │
+     │ 2. Display QR     │                  │
+     │<──────────────────│                  │
+     │                   │                  │
+     │                   │ 3. Scan QR       │
+     │                   │<─────────────────│
+     │                   │                  │
+     │                   │ 4. POST order    │
+     │                   │<─────────────────│
+     │                   │                  │
+     │ 5. Approve        │                  │
+     │<──────────────────│                  │
+     │                   │                  │
+     │ 6. Confirm        │                  │
+     │──────────────────>│                  │
+     │                   │                  │
+     │                   │ 7. Webhook       │
+     │                   │─────────────────>│
+```
+
+When you scan the customer's QR, you receive a session URL:
+
+```json
+{
+  "ocid": 200,
+  "order": "https://api.paymentapp.com/opencharge/orders/create/sess_xyz789",
+  "expiresAt": 1706400000
+}
+```
+
+### Implementation
+
+```javascript
+// 1. Parse scanned QR code
+const qrData = JSON.parse(scannedQRContent);
+
+// 2. Verify the payment gateway
+const gatewayMetadata = await fetch(`${getEndpoint(qrData.ocid)}/metadata.json`);
+if (!isAcceptedGateway(qrData.ocid)) {
+  throw new Error('Payment gateway not accepted');
+}
+
+// 3. Check expiration
+if (qrData.expiresAt < Date.now() / 1000) {
+  throw new Error('QR code expired');
+}
+
+// 4. Create and sign the order
+const order = {
+  id: `ord_${crypto.randomUUID()}`,
+  ocid: YOUR_OCID,
+  amount: cart.total,
+  currency: "USD",
+  items: cart.items,
+  createdAt: Math.floor(Date.now() / 1000),
+  expiresAt: Math.floor(Date.now() / 1000) + 300,
+  accepts: [100, 101, 102]
+};
+
+const signature = signOrder(order, YOUR_PRIVATE_KEY);
+
+// 5. POST to the payment app's session URL
+const response = await fetch(qrData.order, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    ...createAuthHeaders(YOUR_OCID, YOUR_PRIVATE_KEY)
+  },
+  body: JSON.stringify({
+    order,
+    signature,
+    urls: {
+      order: [`https://api.yourstore.com/opencharge/orders/${order.id}`],
+      completed: `https://yourstore.com/orders/${order.id}/success`,
+      cancelled: `https://yourstore.com/orders/${order.id}/cancelled`
+    }
+  })
+});
+
+const { urls } = await response.json();
+
+// 6. Optionally poll status URL while waiting for webhook
+pollStatus(urls.status);
+```
+
+## Inventory Display
+
+For vending machines, kiosks, or any scenario where customers browse your catalog, expose your inventory and let payment apps create orders.
+
+### Static QR Code
+
+Display a permanent QR code for your inventory:
+
+```json
+{
+  "ocid": 500,
+  "inventory": "https://api.yourstore.com/opencharge/inventory",
+  "expiresAt": null
+}
+```
+
+`expiresAt: null` indicates this is a permanent QR code.
+
+### Flow
+
+1. Customer scans your inventory QR code
+2. Payment app fetches your `/inventory` endpoint
+3. Customer selects items in their app
+4. Payment app calls your `/orders/create` endpoint
+5. You sign and return the order
+6. Payment app processes payment
+7. You receive webhook confirmation
+
+See [Inventory endpoint](/merchant-api/endpoint/inventory) and [Create Order endpoint](/merchant-api/endpoint/order-create) for implementation details.
+
+## Receiving Payment Confirmation
+
+All payment flows end with a signed proof delivered to your `/transfer/webhook` endpoint.
+
+```javascript
+app.post('/transfer/webhook', async (req, res) => {
+  const { proof, signature } = req.body;
+
+  // 1. Verify issuer is trusted
+  if (!acceptedIssuers.includes(proof.issuer)) {
+    return res.status(400).json({
+      error: { code: 'ISSUER_NOT_ACCEPTED', message: 'Unknown issuer' }
+    });
+  }
+
+  // 2. Verify signature
+  const publicKey = await getPublicKey(proof.issuer);
+  if (!verifySignature(proof, signature, publicKey)) {
+    return res.status(400).json({
+      error: { code: 'PROOF_SIGNATURE_INVALID', message: 'Invalid signature' }
+    });
+  }
+
+  // 3. Verify recipient is you
+  if (proof.to.ocid !== YOUR_OCID) {
+    return res.status(400).json({
+      error: { code: 'INVALID_PROOF', message: 'Wrong recipient' }
+    });
+  }
+
+  // 4. Match to order and verify amount
+  const order = await db.getOrderByReference(proof.to.reference);
+  if (!order) {
+    return res.status(400).json({
+      error: { code: 'ORDER_NOT_FOUND', message: 'Unknown order reference' }
+    });
+  }
+
+  if (proof.amount !== order.amount || proof.currency !== order.currency) {
+    return res.status(400).json({
+      error: { code: 'AMOUNT_MISMATCH', message: 'Payment amount mismatch' }
+    });
+  }
+
+  // 5. Mark order as paid and fulfill
+  await db.markOrderPaid(order.id, proof.txid, proof.timestamp);
+  await fulfillOrder(order);
+
+  res.json({ status: 'accepted', txid: proof.txid });
+});
+```
+
+See [Transfer Webhook](/merchant-api/endpoint/transfer-webhook) for complete implementation guidance.
+
+## Merchant Gateways you accept.
+
+The `accepts` field in your order specifies which merchant gateways [OCIDs] you accept payments from. A payment is only valid if the proof issuer is in your accepts list.
+
+1. To get the gateway OCID, register with the merchant gateway and add their OCID to your accepts lists.
+2. Only add OCIDs of gateways you have an account / service with.
+3. You can customize the merchant gateways in your accepts list for each order.
+

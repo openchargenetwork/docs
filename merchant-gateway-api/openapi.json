@@ -1,0 +1,1017 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Opencharge Merchant Gateway API",
+    "description": "API specification for merchant gateways integrating with the Opencharge protocol. Merchant gateways provide hosted checkout pages for online merchants and process payments on their behalf.",
+    "version": "0.1.0",
+    "license": {
+      "name": "MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://pay.gateway.example/opencharge",
+      "description": "Example merchant gateway Opencharge endpoint"
+    }
+  ],
+  "paths": {
+    "/metadata.json": {
+      "get": {
+        "operationId": "getMetadata",
+        "summary": "Get OCID metadata",
+        "description": "Returns your gateway's metadata including public key, endpoint URL, capabilities, and settlement preferences. Merchants fetch this to discover how to interact with your gateway.",
+        "responses": {
+          "200": {
+            "description": "OCID metadata document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OCIDMetadata"
+                },
+                "example": {
+                  "opencharge": "0.1",
+                  "name": "PayFlow Gateway",
+                  "description": "Hosted checkout for online merchants",
+                  "icon": "https://pay.gateway.example/icon.png",
+                  "config": {
+                    "publicKey": "a34b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b",
+                    "endpoint": "https://pay.gateway.example/opencharge",
+                    "capabilities": [
+                      "orders.checkout",
+                      "transfer.create",
+                      "transfer.webhook",
+                      "payment.create",
+                      "payment.settle",
+                      "verify.txid"
+                    ],
+                    "settlement": {
+                      "currencies": ["USD", "EUR", "GBP"],
+                      "accepts": [100, 101, 102]
+                    }
+                  },
+                  "signature": "a1b2c3d4e5f6...7f1b",
+                  "contact": "integrations@gateway.example"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/capabilities": {
+      "get": {
+        "operationId": "getCapabilities",
+        "summary": "Get service capabilities",
+        "description": "Authenticated endpoint for merchants to discover their specific capabilities and permissions at your gateway. Returns the exact capabilities available to the requesting merchant based on their partnership agreement.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/X-OC-ID"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Timestamp"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Nonce"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Signature"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Service capabilities for the authenticated merchant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Capabilities"
+                },
+                "example": {
+                  "ocid": 300,
+                  "name": "PayFlow Gateway",
+                  "capabilities": [
+                    "orders.checkout",
+                    "transfer.webhook",
+                    "verify.txid"
+                  ],
+                  "settlement": {
+                    "currencies": ["USD", "EUR"],
+                    "accepts": [100, 101]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/checkout": {
+      "post": {
+        "operationId": "checkoutOrder",
+        "summary": "Checkout order",
+        "description": "Merchants call this endpoint to initiate a hosted checkout. Receive the merchant's signed order along with callback URLs. Create a checkout session and return a redirect URL where the merchant should send their customer to complete payment on your hosted page.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/X-OC-ID"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Timestamp"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Nonce"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Signature"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderCheckoutRequest"
+              },
+              "example": {
+                "order": {
+                  "id": "ord_xyz789",
+                  "ocid": 500,
+                  "reference": "checkout-session-123",
+                  "amount": "99.99",
+                  "currency": "USD",
+                  "items": [
+                    {
+                      "id": "prod_001",
+                      "name": "Premium Widget",
+                      "quantity": 2,
+                      "price": "49.99"
+                    }
+                  ],
+                  "memo": "Online purchase",
+                  "createdAt": 1706313600,
+                  "expiresAt": 1706400000,
+                  "accepts": [100, 101]
+                },
+                "signature": "a1b2c3d4e5f6...merchant_sig",
+                "urls": {
+                  "order": ["https://merchant.example/orders/ord_xyz789"],
+                  "completed": "https://merchant.example/checkout/success",
+                  "cancelled": "https://merchant.example/checkout/cancelled"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Checkout session created, redirect URL returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderCheckoutResponse"
+                },
+                "example": {
+                  "redirect_url": "https://pay.gateway.example/checkout/session_abc123"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or signature",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transfer/webhook": {
+      "post": {
+        "operationId": "transferWebhook",
+        "summary": "Instant Transfer Notification (ITN)",
+        "description": "Receive signed transfer proofs from settlement providers. When a transfer involving your gateway OCID is completed, a signed proof is POSTed here. Verify the proof, match it to a pending checkout session, and forward the proof to the merchant's webhook.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/X-OC-ID"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Timestamp"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Nonce"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Signature"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferWebhookRequest"
+              },
+              "example": {
+                "proof": {
+                  "txid": "settlement_tx_456",
+                  "issuer": 100,
+                  "from": {
+                    "ocid": 200,
+                    "reference": "wallet_tx_123"
+                  },
+                  "to": {
+                    "ocid": 300,
+                    "reference": "session_abc123"
+                  },
+                  "amount": "99.99",
+                  "currency": "USD",
+                  "timestamp": 1706500500,
+                  "memo": "Payment for ord_xyz789"
+                },
+                "signature": "a1b2c3d4e5f6..."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Notification received and processed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransferWebhookResponse"
+                },
+                "example": {
+                  "status": "accepted",
+                  "txid": "settlement_tx_456"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid proof or signature",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transfer/create": {
+      "post": {
+        "operationId": "createTransfer",
+        "summary": "Create transfer",
+        "description": "Process transfer requests to move funds between accounts. Used for internal transfers (from your own payment app) and external transfers (from 3rd party partners with a reserve account). Map the from/to OCIDs to internal merchant accounts. Return a signed proof of transfer.",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-OC-ID" },
+          { "$ref": "#/components/parameters/X-OC-Timestamp" },
+          { "$ref": "#/components/parameters/X-OC-Nonce" },
+          { "$ref": "#/components/parameters/X-OC-Signature" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TransferCreateRequest" },
+              "example": {
+                "from": {
+                  "ocid": 200,
+                  "reference": "wallet_user_123"
+                },
+                "to": {
+                  "ocid": 500,
+                  "reference": "ord_abc123"
+                },
+                "amount": "25.00",
+                "currency": "USD",
+                "memo": "Payment for order ord_abc123",
+                "order": {
+                  "id": "ord_abc123",
+                  "urls": ["https://merchant.example/orders/ord_abc123"]
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transfer completed, signed proof returned",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TransferCreateResponse" },
+                "example": {
+                  "proof": {
+                    "txid": "gateway_tx_789",
+                    "issuer": 300,
+                    "from": { "ocid": 200, "reference": "wallet_user_123" },
+                    "to": { "ocid": 500, "reference": "ord_abc123" },
+                    "amount": "25.00",
+                    "currency": "USD",
+                    "timestamp": 1706500500,
+                    "memo": "Payment for order ord_abc123"
+                  },
+                  "signature": "a1b2c3d4e5f6..."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient funds",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/payment/create": {
+      "post": {
+        "operationId": "createPayment",
+        "summary": "Create payment",
+        "description": "Accept payment requests from third-party payment apps. Create a pending payment and return settlement information. The payment app will then settle via one of your accepted settlement providers using /payment/settle.",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-OC-ID" },
+          { "$ref": "#/components/parameters/X-OC-Timestamp" },
+          { "$ref": "#/components/parameters/X-OC-Nonce" },
+          { "$ref": "#/components/parameters/X-OC-Signature" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PaymentCreateRequest" },
+              "example": {
+                "to": 500,
+                "amount": "99.99",
+                "currency": "USD",
+                "reference": "payment_123",
+                "memo": "Payment for electronics",
+                "expiresAt": 1706503600,
+                "order": {
+                  "id": "ord_abc123",
+                  "urls": ["https://merchant.example/orders/ord_abc123"]
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Payment created, awaiting settlement",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PaymentCreateResponse" },
+                "example": {
+                  "status": "pending_settlement",
+                  "txid": "gateway_payment_456",
+                  "amount": "99.99",
+                  "currency": "USD",
+                  "expiresAt": 1706503600,
+                  "settlement": {
+                    "accepts": [100, 101, 102]
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed or merchant not registered",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/payment/settle": {
+      "post": {
+        "operationId": "settlePayment",
+        "summary": "Settle payment",
+        "description": "Complete a pending payment by submitting a signed transfer proof from an accepted settlement provider. Verify the proof, mark the payment as complete, and forward a signed proof to the merchant's webhook.",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-OC-ID" },
+          { "$ref": "#/components/parameters/X-OC-Timestamp" },
+          { "$ref": "#/components/parameters/X-OC-Nonce" },
+          { "$ref": "#/components/parameters/X-OC-Signature" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PaymentSettleRequest" },
+              "example": {
+                "txid": "gateway_payment_456",
+                "proof": {
+                  "txid": "settlement_tx_789",
+                  "issuer": 100,
+                  "from": { "ocid": 200, "reference": "wallet_tx_123" },
+                  "to": { "ocid": 300, "reference": "gateway_payment_456" },
+                  "amount": "99.99",
+                  "currency": "USD",
+                  "timestamp": 1706500500,
+                  "memo": "Settlement for gateway_payment_456"
+                },
+                "signature": "a1b2c3d4e5f6..."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Payment settled successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PaymentSettleResponse" },
+                "example": {
+                  "status": "completed",
+                  "txid": "gateway_payment_456",
+                  "proof": {
+                    "txid": "gateway_payment_456",
+                    "issuer": 300,
+                    "from": { "ocid": 200, "reference": "wallet_tx_123" },
+                    "to": { "ocid": 500, "reference": "ord_abc123" },
+                    "amount": "99.99",
+                    "currency": "USD",
+                    "timestamp": 1706500500
+                  },
+                  "signature": "gateway_sig_xyz..."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid proof or signature",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "404": {
+            "description": "Payment not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/verify/{txid}": {
+      "get": {
+        "operationId": "verifyTransaction",
+        "summary": "Verify a transaction",
+        "description": "Optional endpoint for merchants to verify a payment transaction. Returns the transaction details and signature proof if it exists.",
+        "parameters": [
+          {
+            "name": "txid",
+            "in": "path",
+            "required": true,
+            "description": "The transaction ID to verify",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transaction verified",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyResponse"
+                },
+                "example": {
+                  "status": "completed",
+                  "proof": {
+                    "txid": "gateway_tx_456",
+                    "issuer": 300,
+                    "from": {
+                      "ocid": 200,
+                      "reference": "wallet_tx_123"
+                    },
+                    "to": {
+                      "ocid": 500,
+                      "reference": "ord_xyz789"
+                    },
+                    "amount": "99.99",
+                    "currency": "USD",
+                    "timestamp": 1706500500,
+                    "memo": "Payment for ord_xyz789"
+                  },
+                  "signature": "a1b2c3..."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Transaction not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "X-OC-ID": {
+        "name": "X-OC-ID",
+        "in": "header",
+        "required": true,
+        "description": "Caller's OCID (Opencharge ID)",
+        "schema": {
+          "type": "string"
+        },
+        "example": "500"
+      },
+      "X-OC-Timestamp": {
+        "name": "X-OC-Timestamp",
+        "in": "header",
+        "required": true,
+        "description": "Unix timestamp in seconds",
+        "schema": {
+          "type": "string"
+        },
+        "example": "1706500000"
+      },
+      "X-OC-Nonce": {
+        "name": "X-OC-Nonce",
+        "in": "header",
+        "required": true,
+        "description": "Unique request identifier for replay protection",
+        "schema": {
+          "type": "string"
+        },
+        "example": "req_abc123"
+      },
+      "X-OC-Signature": {
+        "name": "X-OC-Signature",
+        "in": "header",
+        "required": true,
+        "description": "secp256k1 ECDSA signature of the canonical request",
+        "schema": {
+          "type": "string"
+        },
+        "example": "a1b2c3d4...7f1b"
+      }
+    },
+    "schemas": {
+      "OCIDMetadata": {
+        "type": "object",
+        "required": ["opencharge", "name", "config", "signature"],
+        "description": "Metadata document hosted at your registered URL. Contains everything merchants need to interact with your gateway.",
+        "properties": {
+          "opencharge": {
+            "type": "string",
+            "description": "Protocol version",
+            "example": "0.1"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable gateway name",
+            "example": "PayFlow Gateway"
+          },
+          "description": {
+            "type": "string",
+            "description": "Gateway description"
+          },
+          "icon": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL to gateway logo/icon"
+          },
+          "config": {
+            "$ref": "#/components/schemas/OCIDConfig"
+          },
+          "signature": {
+            "type": "string",
+            "description": "secp256k1 signature of the canonicalized config JSON"
+          },
+          "contact": {
+            "type": "string",
+            "description": "Integration support contact"
+          }
+        }
+      },
+      "OCIDConfig": {
+        "type": "object",
+        "required": ["publicKey", "endpoint", "capabilities"],
+        "description": "Payment-critical configuration signed by your private key.",
+        "properties": {
+          "publicKey": {
+            "type": "string",
+            "pattern": "^[a-fA-F0-9]{128}$",
+            "description": "secp256k1 public key (128 hex chars)"
+          },
+          "endpoint": {
+            "type": "string",
+            "format": "uri",
+            "description": "Base URL for your Opencharge API"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["orders.checkout", "transfer.create", "transfer.webhook", "payment.create", "payment.settle", "verify.txid"]
+            },
+            "description": "List of supported operations"
+          },
+          "settlement": {
+            "type": "object",
+            "description": "Settlement configuration",
+            "properties": {
+              "currencies": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Supported ISO 4217 currency codes"
+              },
+              "accepts": {
+                "type": "array",
+                "items": { "type": "integer" },
+                "description": "OCIDs accepted for settlement proofs"
+              }
+            }
+          }
+        }
+      },
+      "Capabilities": {
+        "type": "object",
+        "required": ["ocid", "name", "capabilities"],
+        "properties": {
+          "ocid": {
+            "type": "integer",
+            "description": "Your gateway's OCID"
+          },
+          "name": {
+            "type": "string",
+            "description": "Gateway name"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["orders.checkout", "transfer.create", "transfer.webhook", "payment.create", "payment.settle", "verify.txid"]
+            }
+          },
+          "settlement": {
+            "$ref": "#/components/schemas/SettlementInfo"
+          }
+        }
+      },
+      "SettlementInfo": {
+        "type": "object",
+        "properties": {
+          "currencies": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "accepts": {
+            "type": "array",
+            "items": { "type": "integer" }
+          }
+        }
+      },
+      "Order": {
+        "type": "object",
+        "required": ["id", "ocid", "amount", "currency", "createdAt"],
+        "description": "Signed order object from merchant",
+        "properties": {
+          "id": { "type": "string" },
+          "ocid": { "type": "integer", "description": "Merchant's OCID" },
+          "reference": { "type": "string" },
+          "amount": { "type": "string" },
+          "currency": { "type": "string" },
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/OrderItem" }
+          },
+          "memo": { "type": "string" },
+          "expiresAt": { "type": "integer" },
+          "createdAt": { "type": "integer" },
+          "accepts": {
+            "type": "array",
+            "items": { "type": "integer" },
+            "description": "Settlement providers the merchant accepts"
+          }
+        }
+      },
+      "OrderItem": {
+        "type": "object",
+        "required": ["id", "name", "quantity", "price"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "quantity": { "type": "number" },
+          "price": { "type": "string" }
+        }
+      },
+      "OrderCheckoutRequest": {
+        "type": "object",
+        "required": ["order", "signature", "urls"],
+        "description": "Request from merchant to initiate hosted checkout",
+        "properties": {
+          "order": { "$ref": "#/components/schemas/Order" },
+          "signature": {
+            "type": "string",
+            "description": "Merchant's signature of the order"
+          },
+          "urls": {
+            "type": "object",
+            "required": ["completed", "cancelled"],
+            "properties": {
+              "order": {
+                "type": "array",
+                "items": { "type": "string", "format": "uri" }
+              },
+              "completed": { "type": "string", "format": "uri" },
+              "cancelled": { "type": "string", "format": "uri" }
+            }
+          }
+        }
+      },
+      "OrderCheckoutResponse": {
+        "type": "object",
+        "required": ["redirect_url"],
+        "description": "Response with redirect URL for hosted checkout",
+        "properties": {
+          "redirect_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL to redirect customer to complete payment"
+          }
+        }
+      },
+      "TransferCreateRequest": {
+        "type": "object",
+        "required": ["from", "to", "amount", "currency"],
+        "description": "Request to transfer funds between accounts",
+        "properties": {
+          "from": {
+            "type": "object",
+            "required": ["ocid"],
+            "properties": {
+              "ocid": { "type": "integer", "description": "Sender's OCID" },
+              "reference": { "type": "string", "description": "Sender's internal reference" }
+            }
+          },
+          "to": {
+            "type": "object",
+            "required": ["ocid"],
+            "properties": {
+              "ocid": { "type": "integer", "description": "Recipient's OCID (merchant)" },
+              "reference": { "type": "string", "description": "Order ID or reference" }
+            }
+          },
+          "amount": { "type": "string", "description": "Amount as decimal string" },
+          "currency": { "type": "string", "description": "ISO 4217 currency code" },
+          "memo": { "type": "string" },
+          "order": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "urls": { "type": "array", "items": { "type": "string", "format": "uri" } }
+            }
+          }
+        }
+      },
+      "TransferCreateResponse": {
+        "type": "object",
+        "required": ["proof", "signature"],
+        "description": "Signed proof of completed transfer",
+        "properties": {
+          "proof": { "$ref": "#/components/schemas/TransactionProof" },
+          "signature": { "type": "string", "description": "Your signature of the proof" }
+        }
+      },
+      "PaymentCreateRequest": {
+        "type": "object",
+        "required": ["to", "amount", "currency"],
+        "description": "Request from 3rd party payment app to create a pending payment",
+        "properties": {
+          "to": { "type": "integer", "description": "Merchant OCID to pay" },
+          "amount": { "type": "string" },
+          "currency": { "type": "string" },
+          "reference": { "type": "string" },
+          "memo": { "type": "string" },
+          "expiresAt": { "type": "integer" },
+          "order": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "urls": { "type": "array", "items": { "type": "string", "format": "uri" } }
+            }
+          }
+        }
+      },
+      "PaymentCreateResponse": {
+        "type": "object",
+        "required": ["status", "txid", "amount", "currency", "settlement"],
+        "description": "Pending payment created, awaiting settlement",
+        "properties": {
+          "status": { "type": "string", "enum": ["pending_settlement"] },
+          "txid": { "type": "string", "description": "Your payment transaction ID" },
+          "amount": { "type": "string" },
+          "currency": { "type": "string" },
+          "expiresAt": { "type": "integer" },
+          "settlement": {
+            "type": "object",
+            "required": ["accepts"],
+            "properties": {
+              "accepts": {
+                "type": "array",
+                "items": { "type": "integer" },
+                "description": "OCIDs you accept for settlement"
+              }
+            }
+          }
+        }
+      },
+      "PaymentSettleRequest": {
+        "type": "object",
+        "required": ["txid", "proof", "signature"],
+        "description": "Settlement proof for a pending payment",
+        "properties": {
+          "txid": { "type": "string", "description": "Your payment transaction ID" },
+          "proof": { "$ref": "#/components/schemas/TransactionProof" },
+          "signature": { "type": "string", "description": "Settlement provider's signature" }
+        }
+      },
+      "PaymentSettleResponse": {
+        "type": "object",
+        "required": ["status", "txid", "proof", "signature"],
+        "description": "Payment completed, your signed proof for the merchant",
+        "properties": {
+          "status": { "type": "string", "enum": ["completed"] },
+          "txid": { "type": "string" },
+          "proof": { "$ref": "#/components/schemas/TransactionProof" },
+          "signature": { "type": "string", "description": "Your signature of the proof" }
+        }
+      },
+      "TransactionProof": {
+        "type": "object",
+        "required": ["txid", "issuer", "from", "to", "amount", "currency", "timestamp"],
+        "properties": {
+          "txid": { "type": "string" },
+          "issuer": { "type": "integer" },
+          "from": {
+            "type": "object",
+            "required": ["ocid"],
+            "properties": {
+              "ocid": { "type": "integer" },
+              "reference": { "type": "string" }
+            }
+          },
+          "to": {
+            "type": "object",
+            "required": ["ocid"],
+            "properties": {
+              "ocid": { "type": "integer" },
+              "reference": { "type": "string" }
+            }
+          },
+          "amount": { "type": "string" },
+          "currency": { "type": "string" },
+          "timestamp": { "type": "integer" },
+          "memo": { "type": "string" }
+        }
+      },
+      "TransferWebhookRequest": {
+        "type": "object",
+        "required": ["proof", "signature"],
+        "properties": {
+          "proof": { "$ref": "#/components/schemas/TransactionProof" },
+          "signature": { "type": "string" }
+        }
+      },
+      "TransferWebhookResponse": {
+        "type": "object",
+        "required": ["status", "txid"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["accepted", "rejected"]
+          },
+          "txid": { "type": "string" },
+          "message": { "type": "string" }
+        }
+      },
+      "VerifyResponse": {
+        "type": "object",
+        "required": ["status", "proof", "signature"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["completed", "pending", "failed"]
+          },
+          "proof": { "$ref": "#/components/schemas/TransactionProof" },
+          "signature": { "type": "string" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "INVALID_SIGNATURE",
+                  "TIMESTAMP_EXPIRED",
+                  "NONCE_REUSED",
+                  "UNKNOWN_OCID",
+                  "INVALID_PROOF",
+                  "PROOF_SIGNATURE_INVALID",
+                  "ISSUER_NOT_ACCEPTED",
+                  "ORDER_NOT_FOUND",
+                  "ORDER_EXPIRED",
+                  "TXID_NOT_FOUND",
+                  "MERCHANT_NOT_REGISTERED",
+                  "INSUFFICIENT_FUNDS",
+                  "PAYMENT_NOT_FOUND",
+                  "PAYMENT_EXPIRED",
+                  "ACCOUNT_NOT_FOUND"
+                ]
+              },
+              "message": { "type": "string" },
+              "details": { "type": "object" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

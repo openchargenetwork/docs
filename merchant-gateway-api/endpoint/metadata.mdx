@@ -1,0 +1,55 @@
+---
+title: "Get Metadata"
+description: "Return your gateway's public metadata for service discovery"
+openapi: "GET /metadata.json"
+---
+
+<Info>
+This endpoint is public and does not require authentication. Merchants and other services fetch this to discover your gateway's capabilities and verify your signatures.
+</Info>
+
+## Implementation
+
+Host this endpoint at the URL you register in the Router Registry. The response tells merchants:
+
+- **Your public key** - Used to verify your signed proofs
+- **Your endpoint URL** - Where to send API requests
+- **Your capabilities** - Which endpoints you support
+- **Settlement preferences** - Which currencies and providers you accept
+
+## Key Fields
+
+| Field | Purpose |
+|-------|---------|
+| `config.publicKey` | Your secp256k1 public key (128 hex chars) |
+| `config.endpoint` | Base URL for your Opencharge API |
+| `config.capabilities` | List of supported operations |
+| `config.settlement.currencies` | ISO 4217 currency codes you support |
+| `config.settlement.accepts` | OCIDs you accept for settlement proofs |
+| `signature` | Your signature of the canonicalized config |
+
+## Signing Your Config
+
+Sign the `config` object to prove you control the private key:
+
+```javascript
+const config = {
+  publicKey: YOUR_PUBLIC_KEY,
+  endpoint: "https://pay.yourgateway.com/opencharge",
+  capabilities: [
+    "orders.checkout",
+    "transfer.create",
+    "transfer.webhook",
+    "payment.create",
+    "payment.settle",
+    "verify.txid"
+  ],
+  settlement: {
+    currencies: ["USD", "EUR"],
+    accepts: [100, 101, 102]
+  }
+};
+
+const canonical = JSON.stringify(config, Object.keys(config).sort());
+const signature = secp256k1_sign(YOUR_PRIVATE_KEY, SHA256(canonical));
+```

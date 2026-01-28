@@ -1,0 +1,102 @@
+---
+title: "Checkout Order"
+description: "Accept signed orders from merchants and return a redirect URL for hosted checkout"
+openapi: "POST /orders/checkout"
+---
+
+<Info>
+This is the core endpoint for hosted checkout. Merchants POST their signed orders, and you return a URL to your payment page.
+</Info>
+
+## Flow
+
+1. Merchant creates and signs an order
+2. Merchant POSTs order to your `/orders/checkout`
+3. You verify the signature and create a checkout session
+4. You return a `redirect_url` to your payment page
+5. Merchant redirects their customer to your page
+6. Customer completes payment on your hosted UI
+7. You send signed proof to merchant's `/transfer/webhook`
+8. You redirect customer back to merchant's `completed` URL
+
+## Implementation
+
+```javascript
+app.post('/orders/checkout', verifyAuth, async (req, res) => {
+  const { order, signature, urls } = req.body;
+  const merchantOcid = parseInt(req.headers['x-oc-id']);
+
+  // 1. Verify merchant is registered
+  const merchant = await db.getMerchant(merchantOcid);
+  if (!merchant) {
+    return res.status(401).json({
+      error: { code: 'MERCHANT_NOT_REGISTERED', message: 'Unknown merchant' }
+    });
+  }
+
+  // 2. Verify order signature
+  const publicKey = merchant.publicKey;
+  const canonical = JSON.stringify(order, Object.keys(order).sort());
+  if (!secp256k1_verify(publicKey, signature, SHA256(canonical))) {
+    return res.status(400).json({
+      error: { code: 'INVALID_SIGNATURE', message: 'Order signature invalid' }
+    });
+  }
+
+  // 3. Validate order
+  if (order.expiresAt && order.expiresAt < Date.now() / 1000) {
+    return res.status(400).json({
+      error: { code: 'ORDER_EXPIRED', message: 'Order has expired' }
+    });
+  }
+
+  // 4. Check we can settle with merchant
+  if (!order.accepts.includes(YOUR_OCID)) {
+    return res.status(400).json({
+      error: { code: 'SETTLEMENT_NOT_SUPPORTED', message: 'Merchant does not accept this gateway' }
+    });
+  }
+
+  // 5. Create checkout session
+  const session = await db.createSession({
+    id: generateSessionId(),
+    merchantOcid,
+    order,
+    signature,
+    urls,
+    status: 'pending',
+    createdAt: Date.now()
+  });
+
+  // 6. Return redirect URL
+  res.json({
+    redirect_url: `https://pay.yourgateway.com/checkout/${session.id}`
+  });
+});
+```
+
+## Validation Checklist
+
+Before accepting an order:
+
+- [ ] Merchant is registered with your gateway
+- [ ] Order signature is valid (signed by merchant's private key)
+- [ ] Order has not expired (`expiresAt`)
+- [ ] Your OCID is in the `accepts` array
+- [ ] Currency is supported
+- [ ] Amount is reasonable (fraud checks)
+
+## Hosted Payment Page
+
+On your payment page (`/checkout/{sessionId}`):
+
+1. Retrieve the session and order
+2. Display order details (items, amount, merchant name)
+3. Present payment options (cards, wallets, bank transfer)
+4. Process payment using your internal systems
+5. On success, call merchant's webhook and redirect to `urls.completed`
+6. On failure/cancel, redirect to `urls.cancelled`
+
+<Warning>
+Always verify the session hasn't expired and hasn't already been paid before processing payment.
+</Warning>

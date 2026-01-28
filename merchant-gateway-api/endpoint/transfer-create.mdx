@@ -1,0 +1,107 @@
+---
+title: "Create Transfer"
+description: "Process transfer requests to move funds between accounts"
+openapi: "POST /transfer/create"
+---
+
+<Info>
+This endpoint handles both internal transfers (from your own payment app) and external transfers (from 3rd party partners with reserve accounts).
+</Info>
+
+## Use Cases
+
+1. **Internal transfers** - Your own payment app requests payment for an order
+2. **Partner transfers** - 3rd party gateways with accounts at your gateway request transfers
+
+## Implementation
+
+```javascript
+app.post('/transfer/create', verifyAuth, async (req, res) => {
+  const { from, to, amount, currency, memo, order } = req.body;
+  const callerOcid = parseInt(req.headers['x-oc-id']);
+
+  // 1. Identify source account
+  // Map the from.ocid to an internal account
+  const sourceAccount = await db.getAccountByOcid(from.ocid);
+  if (!sourceAccount) {
+    return res.status(400).json({
+      error: { code: 'ACCOUNT_NOT_FOUND', message: 'Source account not found' }
+    });
+  }
+
+  // 2. Verify caller has permission to debit this account
+  if (!canDebit(callerOcid, sourceAccount)) {
+    return res.status(401).json({
+      error: { code: 'UNAUTHORIZED', message: 'Cannot debit this account' }
+    });
+  }
+
+  // 3. Identify destination account (merchant)
+  const destAccount = await db.getAccountByOcid(to.ocid);
+  if (!destAccount) {
+    return res.status(400).json({
+      error: { code: 'ACCOUNT_NOT_FOUND', message: 'Destination account not found' }
+    });
+  }
+
+  // 4. Check sufficient balance
+  if (sourceAccount.balance < parseFloat(amount)) {
+    return res.status(402).json({
+      error: { code: 'INSUFFICIENT_FUNDS', message: 'Insufficient balance' }
+    });
+  }
+
+  // 5. Execute transfer
+  const txid = generateTxid();
+  await db.transfer(sourceAccount.id, destAccount.id, amount, currency, txid);
+
+  // 6. Create proof
+  const proof = {
+    txid,
+    issuer: YOUR_OCID,
+    from: { ocid: from.ocid, reference: from.reference },
+    to: { ocid: to.ocid, reference: to.reference || order?.id },
+    amount,
+    currency,
+    timestamp: Math.floor(Date.now() / 1000),
+    memo
+  };
+
+  const signature = signProof(proof);
+
+  // 7. Notify merchant if they support webhooks
+  if (destAccount.webhookUrl) {
+    await notifyMerchant(destAccount.webhookUrl, proof, signature);
+  }
+
+  // 8. Return signed proof
+  res.json({ proof, signature });
+});
+```
+
+## Internal vs External Transfers
+
+**Internal transfers** (from your own app):
+- The `from.reference` may contain an internal user ID
+- You authenticate the user through your app session
+- Match the caller to your internal user system
+
+**External transfers** (from partners):
+- The caller's OCID identifies a partner with a reserve account
+- Debit their reserve balance
+- The `from.ocid` is the partner's OCID
+
+## Order Information
+
+If the transfer is for an order, the request includes:
+
+```json
+{
+  "order": {
+    "id": "ord_abc123",
+    "urls": ["https://merchant.example/orders/ord_abc123"]
+  }
+}
+```
+
+You can fetch and store the order details from these URLs if needed.

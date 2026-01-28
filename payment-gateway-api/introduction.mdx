@@ -1,0 +1,196 @@
+---
+title: "Payment Gateway API"
+description: "API reference for payment gateways (wallet apps) that help users pay merchants"
+---
+
+## Overview
+
+A Payment Gateway (or Payment Service) is a wallet app that helps end users pay merchants. Your users don't need their own OCID - they use your app to make payments.
+
+<Card
+  title="OpenAPI Specification"
+  icon="code"
+  href="https://github.com/opencharge/docs/blob/main/payment-gateway-api/openapi.json"
+>
+  View the complete Payment Gateway OpenAPI specification
+</Card>
+
+## What You Build
+
+As a payment gateway, you provide:
+
+1. **User wallets** - Maintain balances for your users
+2. **Payment flows** - QR code scanning and generation
+3. **Settlement** - Connect with merchant gateways to complete payments
+4. **Mobile/web app** - User interface for payments
+
+## Base URL
+
+Host your API at the endpoint you register in the Router Registry:
+
+```
+https://api.yourwallet.com/opencharge
+```
+
+## Endpoints
+
+| Endpoint | Method | Description |
+| -------- | ------ | ----------- |
+| `/metadata.json` | GET | Your gateway's public metadata |
+| `/capabilities` | GET | Partner-specific capabilities |
+| `/orders/create/{sessionId}` | POST | Receive orders from merchants (QR flow) |
+| `/transfer/create` | POST | Process transfers |
+| `/transfer/webhook` | POST | Receive transfer notifications |
+
+## Payment Flows
+
+### 1. Customer Displays QR (Merchant Scans)
+
+Your app generates a QR code for the user. Merchant scans it to request payment.
+
+```
+┌──────────┐      ┌───────────┐      ┌──────────┐
+│   User   │      │ Your App  │      │ Merchant │
+└────┬─────┘      └─────┬─────┘      └────┬─────┘
+     │                  │                 │
+     │ 1. Open app      │                 │
+     │─────────────────>│                 │
+     │                  │                 │
+     │ 2. Display QR    │                 │
+     │<─────────────────│                 │
+     │                  │                 │
+     │                  │ 3. Scan QR      │
+     │                  │<────────────────│
+     │                  │                 │
+     │                  │ 4. POST order   │
+     │                  │<────────────────│
+     │                  │                 │
+     │ 5. Approve?      │                 │
+     │<─────────────────│                 │
+     │                  │                 │
+     │ 6. Confirm       │                 │
+     │─────────────────>│                 │
+     │                  │                 │
+     │                  │ 7. Process      │
+     │                  │    payment      │
+     │                  │                 │
+     │                  │ 8. Webhook      │
+     │                  │────────────────>│
+```
+
+### 2. Merchant Displays QR (Customer Scans)
+
+Merchant displays a QR code with order info. Customer scans and pays.
+
+```
+┌──────────┐      ┌───────────┐      ┌──────────┐
+│   User   │      │ Your App  │      │ Merchant │
+└────┬─────┘      └─────┬─────┘      └────┬─────┘
+     │                  │                 │
+     │                  │ 1. Display QR   │
+     │                  │<────────────────│
+     │                  │                 │
+     │ 2. Scan QR       │                 │
+     │─────────────────>│                 │
+     │                  │                 │
+     │                  │ 3. Fetch order  │
+     │                  │────────────────>│
+     │                  │                 │
+     │ 4. Confirm       │                 │
+     │<─────────────────│                 │
+     │                  │                 │
+     │ 5. Pay           │                 │
+     │─────────────────>│                 │
+     │                  │                 │
+     │                  │ 6. Process      │
+     │                  │    payment      │
+     │                  │                 │
+     │                  │ 7. Webhook      │
+     │                  │────────────────>│
+```
+
+## QR Code Format
+
+### Your App's QR Code (for merchant to scan)
+
+```json
+{
+  "ocid": 200,
+  "order": "https://api.yourwallet.com/opencharge/orders/create/sess_abc123",
+  "expiresAt": 1706400000
+}
+```
+
+### Merchant's QR Code (for your app to scan)
+
+```json
+{
+  "ocid": 500,
+  "order": "https://api.merchant.com/opencharge/orders/ord_xyz789",
+  "expiresAt": 1706400000
+}
+```
+
+### Inventory QR Code (permanent)
+
+```json
+{
+  "ocid": 500,
+  "inventory": "https://api.merchant.com/opencharge/inventory",
+  "expiresAt": null
+}
+```
+
+## Settlement
+
+To complete a payment, you need to settle with a provider the merchant accepts.
+
+Check the order's `accepts` array:
+
+```javascript
+const order = await fetchMerchantOrder(qrData.order);
+
+// Can we settle directly?
+if (order.accepts.includes(YOUR_OCID)) {
+  // Sign proof directly
+  await sendProofToMerchant(order);
+}
+
+// Do we have a reserve with an accepted provider?
+const commonProvider = findCommonProvider(YOUR_RESERVES, order.accepts);
+if (commonProvider) {
+  // Transfer via that provider
+  const proof = await transferViaProvider(commonProvider, order);
+  await sendProofToMerchant(order, proof);
+}
+
+// Need to find a settlement chain
+const settlementChain = await findSettlementChain(order.accepts);
+// ... resolve transfers through chain
+```
+
+## Authentication
+
+Sign your requests with these headers:
+
+| Header           | Description                          |
+| ---------------- | ------------------------------------ |
+| `X-OC-ID`        | Your OCID                            |
+| `X-OC-Timestamp` | Unix timestamp in seconds            |
+| `X-OC-Nonce`     | Unique request identifier            |
+| `X-OC-Signature` | Signature of canonical request       |
+
+## Error Handling
+
+Return errors in this format:
+
+```json
+{
+  "error": {
+    "code": "INSUFFICIENT_FUNDS",
+    "message": "User does not have enough balance"
+  }
+}
+```
+
+See [Error Codes](/guides/protocol/error-codes) for the complete list.

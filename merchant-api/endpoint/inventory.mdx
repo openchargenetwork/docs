@@ -1,0 +1,63 @@
+---
+title: "Get Inventory"
+description: "Return your merchant's available items for purchase"
+openapi: "GET /inventory"
+---
+
+<Info>
+This endpoint is designed for merchants with small, fixed inventories such as vending machines, kiosks, or simple storefronts.
+</Info>
+
+## Use Cases
+
+- **Vending machines** - Display available snacks and drinks
+- **Kiosks** - Show menu items with prices
+- **Mobile top-up** - List available recharge amounts
+- **Simple stores** - Present a catalog of products
+
+## Item Fields
+
+| Field | Required | Description |
+| ----- | -------- | ----------- |
+| `id` | Yes | Unique item identifier |
+| `name` | Yes | Display name |
+| `price` | Yes | Unit price as decimal string |
+| `description` | No | Item description |
+| `quantity` | No | Available stock |
+| `min_qty` | No | Minimum order quantity (default: 1) |
+| `max_qty` | No | Maximum order quantity |
+| `images` | No | Array of image URLs |
+| `url` | No | Link to item details page |
+
+## Example Response
+
+```json
+{
+  "ocid": 500,
+  "currency": "USD",
+  "items": [
+    {
+      "id": "item_001",
+      "name": "Coca-Cola",
+      "description": "330ml can",
+      "price": "2.50",
+      "quantity": 15,
+      "min_qty": 1,
+      "max_qty": 5,
+      "images": ["https://merchant.example/images/coke.jpg"]
+    },
+    {
+      "id": "item_002",
+      "name": "Snickers Bar",
+      "description": "52g chocolate bar",
+      "price": "1.75",
+      "quantity": 8,
+      "images": ["https://merchant.example/images/snickers.jpg"]
+    }
+  ]
+}
+```
+
+<Note>
+For larger catalogs or dynamic inventory, consider implementing a paginated endpoint or directing users to your web store.
+</Note>

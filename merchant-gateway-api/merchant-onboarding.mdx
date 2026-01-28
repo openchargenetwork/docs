@@ -1,0 +1,248 @@
+---
+title: "Merchant Onboarding"
+description: "How to onboard merchants to your gateway using OCID verification"
+---
+
+Before merchants can use your gateway, they must register and verify ownership of their OCID. This guide covers the secure onboarding process.
+
+## Overview
+
+1. Merchant provides their OCID
+2. You fetch their metadata from the blockchain registry
+3. Merchant signs a challenge to prove ownership
+4. You verify the signature and store the merchant
+
+## Step 1: Get Your OCID
+
+Before onboarding merchants, you need your own OCID:
+
+1. **Mint an OCID** on the Router Registry smart contract
+2. **Set your metadata URL** pointing to your `/metadata.json`
+3. **Store your OCID and private key** securely (e.g., `.env` file)
+
+```javascript
+// .env
+GATEWAY_OCID=300
+GATEWAY_PRIVATE_KEY=your_private_key_hex
+GATEWAY_PUBLIC_KEY=your_public_key_hex
+```
+
+## Step 2: Collect Merchant OCID
+
+Create a registration form where merchants provide their OCID:
+
+```javascript
+app.post('/merchants/register', async (req, res) => {
+  const { ocid } = req.body;
+
+  // Validate OCID is a positive integer
+  if (!Number.isInteger(ocid) || ocid <= 0) {
+    return res.status(400).json({ error: 'Invalid OCID' });
+  }
+
+  // Generate a challenge for the merchant to sign
+  const challenge = crypto.randomBytes(32).toString('hex');
+  const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+
+  await db.savePendingRegistration({
+    ocid,
+    challenge,
+    expiresAt
+  });
+
+  res.json({
+    challenge,
+    message: `Sign this challenge with your OCID ${ocid} private key`,
+    expiresAt
+  });
+});
+```
+
+## Step 3: Fetch Merchant Metadata
+
+<Warning>
+Always fetch metadata through an independent channel, never from a URL provided by the merchant directly. Use the Router Registry or Opencharge index.
+</Warning>
+
+```javascript
+async function fetchMerchantMetadata(ocid) {
+  // Option 1: Query blockchain directly
+  const metadataUrl = await routerRegistry.getMetadataUrl(ocid);
+
+  // Option 2: Use Opencharge index
+  const indexResponse = await fetch(`https://index.opencharge.network/ocid/${ocid}`);
+  const { metadataUrl } = await indexResponse.json();
+
+  // Fetch metadata
+  const response = await fetch(metadataUrl);
+  if (!response.ok) {
+    throw new Error('Metadata URL unreachable - merchant may be offline');
+  }
+
+  const metadata = await response.json();
+
+  // Verify config signature
+  const { config, signature } = metadata;
+  const canonical = JSON.stringify(config, Object.keys(config).sort());
+  if (!secp256k1_verify(config.publicKey, signature, SHA256(canonical))) {
+    throw new Error('Invalid metadata signature');
+  }
+
+  return metadata;
+}
+```
+
+## Step 4: Verify Ownership
+
+The merchant signs your challenge to prove they control the private key:
+
+```javascript
+app.post('/merchants/verify', async (req, res) => {
+  const { ocid, signature } = req.body;
+
+  // 1. Get pending registration
+  const pending = await db.getPendingRegistration(ocid);
+  if (!pending || pending.expiresAt < Date.now()) {
+    return res.status(400).json({ error: 'Challenge expired or not found' });
+  }
+
+  // 2. Fetch merchant metadata
+  let metadata;
+  try {
+    metadata = await fetchMerchantMetadata(ocid);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+
+  // 3. Verify signature of challenge
+  const publicKey = metadata.config.publicKey;
+  if (!secp256k1_verify(publicKey, signature, SHA256(pending.challenge))) {
+    return res.status(400).json({ error: 'Invalid signature' });
+  }
+
+  // 4. Optional: Verify public key owns the OCID on-chain
+  const derivedAddress = publicKeyToAddress(publicKey);
+  const nftOwner = await routerRegistry.ownerOf(ocid);
+  if (derivedAddress.toLowerCase() !== nftOwner.toLowerCase()) {
+    console.warn(`Public key does not own OCID ${ocid} on-chain`);
+    // Decide whether to reject or just warn
+  }
+
+  // 5. Store merchant
+  await db.createMerchant({
+    ocid,
+    name: metadata.name,
+    publicKey,
+    endpoint: metadata.config.endpoint,
+    webhookUrl: `${metadata.config.endpoint}/transfer/webhook`,
+    capabilities: metadata.config.capabilities,
+    currencies: metadata.config.settlement?.currencies || ['USD'],
+    status: 'active',
+    createdAt: Date.now()
+  });
+
+  // 6. Clean up pending registration
+  await db.deletePendingRegistration(ocid);
+
+  res.json({
+    success: true,
+    merchant: {
+      ocid,
+      name: metadata.name
+    }
+  });
+});
+```
+
+## Security Considerations
+
+### Unreachable Metadata URLs
+
+If a merchant's metadata URL is unreachable:
+- Do **not** onboard them
+- This may indicate the OCID is compromised
+- Merchants can take their metadata offline as a safety measure
+
+```javascript
+if (!response.ok) {
+  return res.status(400).json({
+    error: 'Merchant metadata URL is unreachable. Cannot verify identity.'
+  });
+}
+```
+
+### Signature Verification
+
+Always verify:
+1. The metadata `config` is signed by the `publicKey` in the config
+2. The challenge is signed by the same public key
+3. Optionally, that the public key owns the OCID NFT on-chain
+
+### Unique OCIDs
+
+OCIDs are unique across the ecosystem. Store them under a unique index:
+
+```javascript
+// Database schema
+CREATE UNIQUE INDEX idx_merchants_ocid ON merchants(ocid);
+```
+
+## Auth Middleware
+
+After onboarding, authenticate all requests from merchants:
+
+```javascript
+async function verifyMerchantAuth(req, res, next) {
+  const ocid = parseInt(req.headers['x-oc-id']);
+  const timestamp = req.headers['x-oc-timestamp'];
+  const nonce = req.headers['x-oc-nonce'];
+  const signature = req.headers['x-oc-signature'];
+
+  // 1. Get merchant
+  const merchant = await db.getMerchant(ocid);
+  if (!merchant) {
+    return res.status(401).json({
+      error: { code: 'MERCHANT_NOT_REGISTERED', message: 'Unknown merchant' }
+    });
+  }
+
+  // 2. Check timestamp (within 5 minutes)
+  const now = Math.floor(Date.now() / 1000);
+  if (Math.abs(now - parseInt(timestamp)) > 300) {
+    return res.status(401).json({
+      error: { code: 'TIMESTAMP_EXPIRED', message: 'Request too old' }
+    });
+  }
+
+  // 3. Check nonce not reused
+  if (await db.isNonceUsed(ocid, nonce)) {
+    return res.status(401).json({
+      error: { code: 'NONCE_REUSED', message: 'Nonce already used' }
+    });
+  }
+
+  // 4. Verify signature
+  const bodyHash = SHA256(JSON.stringify(req.body) || '');
+  const canonical = [ocid, timestamp, nonce, req.method, req.path, bodyHash].join('\n');
+
+  if (!secp256k1_verify(merchant.publicKey, signature, SHA256(canonical))) {
+    return res.status(401).json({
+      error: { code: 'INVALID_SIGNATURE', message: 'Signature verification failed' }
+    });
+  }
+
+  // 5. Store nonce
+  await db.storeNonce(ocid, nonce);
+
+  req.merchant = merchant;
+  next();
+}
+
+// Use middleware on protected routes
+app.post('/orders/checkout', verifyMerchantAuth, handleCheckout);
+```
+
+## Next Steps
+
+- [Payment Processing](/merchant-gateway-api/payment-processing) - How to process payments
+- [Orders Checkout](/merchant-gateway-api/endpoint/orders-checkout) - Implement the checkout endpoint

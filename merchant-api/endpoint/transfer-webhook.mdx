@@ -1,0 +1,94 @@
+---
+title: "Transfer Webhook"
+description: "Receive signed transfer proofs when payments to your merchant are completed"
+openapi: "POST /transfer/webhook"
+---
+
+<Info>
+This is the primary way you learn that a payment has been completed. When a transfer involving your OCID finishes, the payment gateway POSTs a signed proof to this endpoint.
+</Info>
+
+## Flow
+
+1. Customer pays via a payment gateway
+2. Gateway completes the transfer to your OCID
+3. Gateway POSTs signed proof to your `/transfer/webhook`
+4. You verify the proof and mark the order as paid
+
+## Verifying the Proof
+
+Always verify the proof before trusting it:
+
+```javascript
+app.post('/transfer/webhook', async (req, res) => {
+  const { proof, signature } = req.body;
+
+  // 1. Check the issuer is trusted
+  if (!acceptedIssuers.includes(proof.issuer)) {
+    return res.status(400).json({
+      error: { code: 'ISSUER_NOT_ACCEPTED', message: 'Unknown issuer' }
+    });
+  }
+
+  // 2. Fetch issuer's public key
+  const issuerMetadata = await fetch(`${issuerEndpoint}/metadata.json`);
+  const publicKey = issuerMetadata.config.publicKey;
+
+  // 3. Verify signature
+  const canonical = JSON.stringify(proof, Object.keys(proof).sort());
+  if (!secp256k1_verify(publicKey, signature, SHA256(canonical))) {
+    return res.status(400).json({
+      error: { code: 'PROOF_SIGNATURE_INVALID', message: 'Invalid signature' }
+    });
+  }
+
+  // 4. Check recipient is your OCID
+  if (proof.to.ocid !== YOUR_OCID) {
+    return res.status(400).json({
+      error: { code: 'INVALID_PROOF', message: 'Wrong recipient' }
+    });
+  }
+
+  // 5. Find and update the order
+  const order = db.getOrderByReference(proof.to.reference);
+  if (order && proof.amount === order.amount) {
+    db.markOrderPaid(order.id, proof.txid, proof.timestamp);
+  }
+
+  res.json({ status: 'accepted', txid: proof.txid });
+});
+```
+
+## Proof Fields
+
+| Field | Description |
+| ----- | ----------- |
+| `proof.txid` | Unique transaction ID from the issuer |
+| `proof.issuer` | OCID of the service that executed the transfer |
+| `proof.from.ocid` | Sender's OCID |
+| `proof.to.ocid` | Your merchant OCID |
+| `proof.to.reference` | Your order ID (if provided during payment) |
+| `proof.amount` | Transfer amount |
+| `proof.currency` | Currency code |
+| `proof.timestamp` | When the transfer completed |
+
+## Respond to the webhook call
+
+Return `accepted` if you processed the notification:
+
+```json
+{
+  "status": "accepted",
+  "txid": "gateway_tx_456"
+}
+```
+
+Return `rejected` with a reason if there's an issue:
+
+```json
+{
+  "status": "rejected",
+  "txid": "gateway_tx_456",
+  "message": "Order already paid"
+}
+```

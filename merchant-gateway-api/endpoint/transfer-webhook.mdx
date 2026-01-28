@@ -1,0 +1,119 @@
+---
+title: "Transfer Webhook"
+description: "Receive signed transfer proofs from settlement providers"
+openapi: "POST /transfer/webhook"
+---
+
+<Info>
+Settlement providers POST signed proofs to this endpoint when transfers complete. Match the proof to pending payments and forward your own signed proof to merchants.
+</Info>
+
+## When You Receive Webhooks
+
+You receive webhooks when:
+
+1. A settlement provider you accept completes a transfer to your OCID
+2. The transfer was for a pending payment at your gateway
+3. You need to credit a merchant and notify them
+
+## Implementation
+
+```javascript
+app.post('/transfer/webhook', verifyAuth, async (req, res) => {
+  const { proof, signature } = req.body;
+  const senderOcid = parseInt(req.headers['x-oc-id']);
+
+  // 1. Verify sender is an accepted settlement provider
+  if (!ACCEPTED_SETTLEMENT_PROVIDERS.includes(senderOcid)) {
+    return res.status(400).json({
+      error: { code: 'ISSUER_NOT_ACCEPTED', message: 'Unknown settlement provider' }
+    });
+  }
+
+  // 2. Verify sender is the proof issuer
+  if (proof.issuer !== senderOcid) {
+    return res.status(400).json({
+      error: { code: 'INVALID_PROOF', message: 'Issuer mismatch' }
+    });
+  }
+
+  // 3. Verify proof signature
+  const publicKey = await getPublicKey(senderOcid);
+  const canonical = JSON.stringify(proof, Object.keys(proof).sort());
+  if (!secp256k1_verify(publicKey, signature, canonical)) {
+    return res.status(400).json({
+      error: { code: 'PROOF_SIGNATURE_INVALID', message: 'Invalid signature' }
+    });
+  }
+
+  // 4. Verify we are the recipient
+  if (proof.to.ocid !== YOUR_OCID) {
+    return res.status(400).json({
+      error: { code: 'INVALID_PROOF', message: 'Wrong recipient' }
+    });
+  }
+
+  // 5. Find the pending payment
+  const payment = await db.getPaymentByReference(proof.to.reference);
+  if (!payment) {
+    // Log for investigation but accept
+    console.log(`Unknown payment reference: ${proof.to.reference}`);
+    return res.json({ status: 'accepted', txid: proof.txid });
+  }
+
+  // 6. Verify amount matches
+  if (proof.amount !== payment.amount || proof.currency !== payment.currency) {
+    return res.status(400).json({
+      error: { code: 'AMOUNT_MISMATCH', message: 'Amount does not match' }
+    });
+  }
+
+  // 7. Mark payment as complete
+  await db.completePayment(payment.id, proof.txid, proof.timestamp);
+
+  // 8. Credit merchant account
+  await db.creditMerchant(payment.merchantOcid, payment.amount, payment.currency);
+
+  // 9. Create and send proof to merchant
+  const merchantProof = {
+    txid: payment.txid,
+    issuer: YOUR_OCID,
+    from: proof.from,
+    to: { ocid: payment.merchantOcid, reference: payment.orderId },
+    amount: payment.amount,
+    currency: payment.currency,
+    timestamp: Math.floor(Date.now() / 1000),
+    memo: `Payment for ${payment.orderId}`
+  };
+
+  await notifyMerchant(payment.merchantOcid, merchantProof);
+
+  res.json({ status: 'accepted', txid: proof.txid });
+});
+```
+
+## Forwarding to Merchants
+
+After receiving a valid proof, create your own proof for the merchant:
+
+```javascript
+async function notifyMerchant(merchantOcid, proof) {
+  const merchant = await db.getMerchant(merchantOcid);
+  const endpoint = merchant.webhookUrl || await resolveEndpoint(merchantOcid);
+
+  const signature = signProof(proof);
+
+  await fetch(`${endpoint}/transfer/webhook`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...createAuthHeaders(YOUR_OCID, YOUR_PRIVATE_KEY)
+    },
+    body: JSON.stringify({ proof, signature })
+  });
+}
+```
+
+<Warning>
+Always verify the proof signature before crediting accounts or forwarding to merchants.
+</Warning>

@@ -1,0 +1,72 @@
+---
+title: "Create Order"
+description: "Create and sign an order when requested by a payment app"
+openapi: "POST /orders/create"
+---
+
+<Info>
+For detailed flow diagrams and implementation guidance, see the [Merchant Orders guide](/guides/protocol/merchant-orders#merchant-flow).
+</Info>
+
+## Flow
+
+1. Payment app sends order details to your endpoint
+2. You validate the request and create the order in your system
+3. You sign the order with your private key
+4. You return the signed order with callback URLs
+
+## Signing the Order
+
+Canonicalize and sign the order object:
+
+```javascript
+const order = {
+  id: "ord_abc123",
+  ocid: 500,  // Your merchant OCID
+  amount: "15.00",
+  currency: "USD",
+  items: [
+    { id: "item_001", name: "Large Coffee", quantity: 2, price: "5.00" },
+    { id: "item_002", name: "Croissant", quantity: 1, price: "5.00" }
+  ],
+  createdAt: 1706313600,
+  expiresAt: 1706400000,
+  accepts: [100, 101, 102]
+};
+
+// Canonicalize: sort keys alphabetically
+const canonical = JSON.stringify(order, Object.keys(order).sort());
+const signature = secp256k1_sign(privateKey, SHA256(canonical));
+```
+
+## Callback URLs
+
+Include URLs in your response so payment apps know where to redirect users:
+
+| URL | Purpose |
+| --- | ------- |
+| `urls.order` | Where the order can be retrieved |
+| `urls.completed` | Redirect after successful payment |
+| `urls.cancelled` | Redirect if payment is cancelled |
+
+## Example Response
+
+```json
+{
+  "order": {
+    "id": "ord_abc123",
+    "ocid": 500,
+    "amount": "15.00",
+    "currency": "USD",
+    "createdAt": 1706313600,
+    "expiresAt": 1706400000,
+    "accepts": [100, 101, 102]
+  },
+  "signature": "a1b2c3d4e5f6...7f1b",
+  "urls": {
+    "order": ["https://merchant.example/orders/ord_abc123"],
+    "completed": "https://merchant.example/checkout/success",
+    "cancelled": "https://merchant.example/checkout/cancelled"
+  }
+}
+```

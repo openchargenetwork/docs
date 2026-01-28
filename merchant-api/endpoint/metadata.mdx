@@ -1,0 +1,48 @@
+---
+title: "Get Metadata"
+description: "Return your service's public metadata including public key, endpoint URL, and capabilities"
+openapi: "GET /metadata.json"
+---
+
+<Info>
+This endpoint is public and does not require authentication. Other services fetch this to discover how to interact with your merchant and verify your signatures.
+</Info>
+
+## Implementation
+
+Host this endpoint at the URL you register in the Router Registry smart contract. The response tells other services:
+
+- **Your public key** - Used to verify signatures on orders you create
+- **Your endpoint URL** - Where to send API requests
+- **Your capabilities** - Which endpoints you support
+- **Settlement preferences** - Which currencies and settlement providers you accept
+
+## Example Response
+
+```json
+{
+  "opencharge": "0.1",
+  "name": "Coffee Shop",
+  "description": "Local coffee shop accepting Opencharge payments",
+  "icon": "https://merchant.example/icon.png",
+  "config": {
+    "publicKey": "a34b5c6d7e8f9a0b...",
+    "endpoint": "https://api.merchant.example/opencharge",
+    "capabilities": [
+      "orders.create",
+      "orders.status",
+      "transfer.webhook"
+    ],
+    "settlement": {
+      "currencies": ["USD"],
+      "accepts": [100, 101, 102]
+    }
+  },
+  "signature": "a1b2c3d4e5f6...7f1b",
+  "contact": "support@merchant.example"
+}
+```
+
+<Note>
+The `signature` field contains your secp256k1 signature of the canonicalized `config` object. This proves the configuration was set by the holder of your private key.
+</Note>

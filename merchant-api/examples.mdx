@@ -1,0 +1,721 @@
+---
+title: "Examples"
+description: "Complete code examples for merchant Opencharge integration"
+---
+
+These examples demonstrate common merchant integration patterns. All examples use JavaScript/Node.js but the concepts apply to any language.
+
+## Prerequisites
+
+Before implementing, ensure you have:
+
+- Your OCID registered in the Router Registry
+- Your secp256k1 key pair
+- The `@noble/secp256k1` library (or equivalent)
+
+```bash
+npm install @noble/secp256k1 @noble/hashes
+```
+
+## Utility Functions
+
+These helper functions are used throughout the examples:
+
+<CodeGroup>
+
+```javascript signing.js
+import * as secp256k1 from '@noble/secp256k1';
+import { sha256 } from '@noble/hashes/sha256';
+import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
+
+// Canonicalize JSON (sorted keys, no whitespace)
+export function canonicalize(obj) {
+  return JSON.stringify(obj, Object.keys(obj).sort());
+}
+
+// Sign data with private key
+export function sign(privateKey, data) {
+  const hash = sha256(new TextEncoder().encode(data));
+  const signature = secp256k1.signSync(hash, hexToBytes(privateKey));
+  return bytesToHex(signature);
+}
+
+// Verify signature with public key
+export function verify(publicKey, signature, data) {
+  const hash = sha256(new TextEncoder().encode(data));
+  return secp256k1.verify(hexToBytes(signature), hash, hexToBytes(publicKey));
+}
+
+// Sign an order object
+export function signOrder(order, privateKey) {
+  const canonical = canonicalize(order);
+  return sign(privateKey, canonical);
+}
+
+// Verify order signature
+export function verifyOrder(order, signature, publicKey) {
+  const canonical = canonicalize(order);
+  return verify(publicKey, signature, canonical);
+}
+```
+
+```javascript auth.js
+import { sha256 } from '@noble/hashes/sha256';
+import { bytesToHex } from '@noble/hashes/utils';
+import { sign } from './signing.js';
+
+// Create authentication headers for API requests
+export function createAuthHeaders(ocid, privateKey, method, path, body = '') {
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const nonce = `req_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
+
+  const bodyHash = bytesToHex(sha256(new TextEncoder().encode(body)));
+
+  const canonical = [
+    ocid.toString(),
+    timestamp,
+    nonce,
+    method.toUpperCase(),
+    path,
+    bodyHash
+  ].join('\n');
+
+  const signature = sign(privateKey, canonical);
+
+  return {
+    'X-OC-ID': ocid.toString(),
+    'X-OC-Timestamp': timestamp,
+    'X-OC-Nonce': nonce,
+    'X-OC-Signature': signature
+  };
+}
+```
+
+</CodeGroup>
+
+## E-Commerce Checkout
+
+Complete example of online checkout with a merchant gateway.
+
+```javascript ecommerce-checkout.js
+import express from 'express';
+import { signOrder, createAuthHeaders } from './utils.js';
+
+const app = express();
+app.use(express.json());
+
+const YOUR_OCID = 500;
+const YOUR_PRIVATE_KEY = process.env.PRIVATE_KEY;
+const GATEWAY_ENDPOINT = 'https://api.gateway.example/opencharge';
+
+// In-memory order storage (use a database in production)
+const orders = new Map();
+
+// Checkout endpoint - creates order and redirects to gateway
+app.post('/checkout', async (req, res) => {
+  const { cart } = req.body;
+
+  // 1. Create the order
+  const order = {
+    id: `ord_${crypto.randomUUID()}`,
+    ocid: YOUR_OCID,
+    reference: `cart_${req.session.id}`,
+    amount: cart.total.toFixed(2),
+    currency: 'USD',
+    items: cart.items.map(item => ({
+      id: item.sku,
+      name: item.name,
+      quantity: item.quantity,
+      price: item.price.toFixed(2)
+    })),
+    memo: `Order from ${req.session.email}`,
+    createdAt: Math.floor(Date.now() / 1000),
+    expiresAt: Math.floor(Date.now() / 1000) + 3600,
+    accepts: [100, 101, 102]
+  };
+
+  // 2. Sign the order
+  const signature = signOrder(order, YOUR_PRIVATE_KEY);
+
+  // 3. Store locally
+  orders.set(order.id, { order, signature, status: 'pending' });
+
+  // 4. Submit to merchant gateway
+  const requestBody = JSON.stringify({
+    order,
+    signature,
+    urls: {
+      order: [`https://yourstore.com/api/orders/${order.id}`],
+      completed: `https://yourstore.com/checkout/success?order=${order.id}`,
+      cancelled: `https://yourstore.com/checkout/cancelled?order=${order.id}`
+    }
+  });
+
+  const response = await fetch(`${GATEWAY_ENDPOINT}/orders/checkout`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...createAuthHeaders(YOUR_OCID, YOUR_PRIVATE_KEY, 'POST', '/orders/checkout', requestBody)
+    },
+    body: requestBody
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    return res.status(400).json({ error: error.error.message });
+  }
+
+  const { redirect_url } = await response.json();
+
+  // 5. Redirect customer to payment page
+  res.json({ redirect_url });
+});
+
+// Webhook receiver - payment confirmation
+app.post('/transfer/webhook', async (req, res) => {
+  const { proof, signature } = req.body;
+
+  // 1. Verify caller's authentication headers
+  const callerOcid = req.headers['x-oc-id'];
+  // ... verify signature (see full webhook example)
+
+  // 2. Find the order
+  const orderId = proof.to.reference;
+  const stored = orders.get(orderId);
+
+  if (!stored) {
+    return res.status(400).json({
+      error: { code: 'ORDER_NOT_FOUND', message: 'Unknown order' }
+    });
+  }
+
+  // 3. Verify amount matches
+  if (proof.amount !== stored.order.amount) {
+    return res.status(400).json({
+      error: { code: 'AMOUNT_MISMATCH', message: 'Payment amount incorrect' }
+    });
+  }
+
+  // 4. Update order status
+  stored.status = 'paid';
+  stored.txid = proof.txid;
+  stored.paidAt = proof.timestamp;
+
+  // 5. Trigger fulfillment
+  await fulfillOrder(stored.order);
+
+  res.json({ status: 'accepted', txid: proof.txid });
+});
+
+// Success page
+app.get('/checkout/success', (req, res) => {
+  const { order } = req.query;
+  const stored = orders.get(order);
+
+  if (stored?.status === 'paid') {
+    res.render('success', { order: stored.order });
+  } else {
+    // Payment not yet confirmed - show waiting page
+    res.render('processing', { orderId: order });
+  }
+});
+```
+
+## POS with QR Code Display
+
+Example for retail point-of-sale displaying QR codes for customers.
+
+```javascript pos-qr-display.js
+import express from 'express';
+import QRCode from 'qrcode';
+import { signOrder } from './utils.js';
+
+const app = express();
+
+const YOUR_OCID = 500;
+const YOUR_PRIVATE_KEY = process.env.PRIVATE_KEY;
+const YOUR_ENDPOINT = 'https://api.yourstore.com/opencharge';
+
+const orders = new Map();
+
+// Create order and generate QR code for POS display
+app.post('/pos/create-order', async (req, res) => {
+  const { items, terminal } = req.body;
+
+  // 1. Calculate total
+  const total = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+  // 2. Create order
+  const order = {
+    id: `ord_${crypto.randomUUID()}`,
+    ocid: YOUR_OCID,
+    reference: `POS-${terminal}`,
+    amount: total.toFixed(2),
+    currency: 'USD',
+    items: items.map(item => ({
+      id: item.sku,
+      name: item.name,
+      quantity: item.quantity,
+      price: item.price.toFixed(2)
+    })),
+    createdAt: Math.floor(Date.now() / 1000),
+    expiresAt: Math.floor(Date.now() / 1000) + 300,  // 5 minutes
+    accepts: [100, 101, 102]
+  };
+
+  // 3. Sign and store
+  const signature = signOrder(order, YOUR_PRIVATE_KEY);
+  orders.set(order.id, { order, signature, status: 'pending', terminal });
+
+  // 4. Create QR code payload
+  const qrPayload = {
+    ocid: YOUR_OCID,
+    order: `${YOUR_ENDPOINT}/orders/${order.id}`,
+    expiresAt: order.expiresAt
+  };
+
+  // 5. Generate QR code image
+  const qrCodeDataUrl = await QRCode.toDataURL(JSON.stringify(qrPayload), {
+    width: 300,
+    margin: 2,
+    color: { dark: '#000000', light: '#ffffff' }
+  });
+
+  res.json({
+    orderId: order.id,
+    amount: order.amount,
+    currency: order.currency,
+    qrCode: qrCodeDataUrl,
+    expiresAt: order.expiresAt
+  });
+});
+
+// Serve order to payment apps
+app.get('/orders/:orderId', (req, res) => {
+  const stored = orders.get(req.params.orderId);
+
+  if (!stored) {
+    return res.status(404).json({
+      error: { code: 'ORDER_NOT_FOUND', message: 'Order not found' }
+    });
+  }
+
+  if (stored.order.expiresAt < Date.now() / 1000) {
+    return res.status(410).json({
+      error: { code: 'ORDER_EXPIRED', message: 'Order has expired' }
+    });
+  }
+
+  res.json({
+    order: stored.order,
+    signature: stored.signature,
+    urls: {
+      order: [`${YOUR_ENDPOINT}/orders/${stored.order.id}`],
+      completed: `https://yourstore.com/pos/success?order=${stored.order.id}`,
+      cancelled: `https://yourstore.com/pos/cancelled?order=${stored.order.id}`
+    }
+  });
+});
+
+// Check order status (for POS polling)
+app.get('/pos/status/:orderId', (req, res) => {
+  const stored = orders.get(req.params.orderId);
+
+  if (!stored) {
+    return res.status(404).json({ status: 'not_found' });
+  }
+
+  res.json({
+    orderId: stored.order.id,
+    status: stored.status,
+    paidAt: stored.paidAt,
+    txid: stored.txid
+  });
+});
+```
+
+## POS with Barcode Scanner
+
+Example for scanning customer wallet QR codes.
+
+```javascript pos-scanner.js
+import express from 'express';
+import { signOrder, createAuthHeaders, verifyOrder } from './utils.js';
+
+const app = express();
+app.use(express.json());
+
+const YOUR_OCID = 500;
+const YOUR_PRIVATE_KEY = process.env.PRIVATE_KEY;
+const ACCEPTED_GATEWAYS = [100, 101, 200, 201];
+
+// Process scanned QR code from customer's wallet
+app.post('/pos/scan', async (req, res) => {
+  const { qrContent, items, terminal } = req.body;
+
+  try {
+    // 1. Parse QR code
+    const qrData = JSON.parse(qrContent);
+
+    // 2. Validate gateway is accepted
+    if (!ACCEPTED_GATEWAYS.includes(qrData.ocid)) {
+      return res.status(400).json({
+        error: 'Payment gateway not accepted'
+      });
+    }
+
+    // 3. Check expiration
+    if (qrData.expiresAt && qrData.expiresAt < Date.now() / 1000) {
+      return res.status(400).json({
+        error: 'QR code has expired'
+      });
+    }
+
+    // 4. Fetch gateway metadata to verify
+    const metadataUrl = await resolveEndpoint(qrData.ocid);
+    const metadata = await fetch(`${metadataUrl}/metadata.json`).then(r => r.json());
+
+    // 5. Create and sign order
+    const total = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+    const order = {
+      id: `ord_${crypto.randomUUID()}`,
+      ocid: YOUR_OCID,
+      reference: `POS-${terminal}`,
+      amount: total.toFixed(2),
+      currency: 'USD',
+      items,
+      createdAt: Math.floor(Date.now() / 1000),
+      expiresAt: Math.floor(Date.now() / 1000) + 300,
+      accepts: [100, 101, 102]
+    };
+
+    const signature = signOrder(order, YOUR_PRIVATE_KEY);
+
+    // 6. POST to payment gateway's session URL
+    const requestBody = JSON.stringify({
+      order,
+      signature,
+      urls: {
+        order: [`https://api.yourstore.com/opencharge/orders/${order.id}`],
+        completed: `https://yourstore.com/pos/success`,
+        cancelled: `https://yourstore.com/pos/cancelled`
+      }
+    });
+
+    const response = await fetch(qrData.order, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...createAuthHeaders(YOUR_OCID, YOUR_PRIVATE_KEY, 'POST', new URL(qrData.order).pathname, requestBody)
+      },
+      body: requestBody
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      return res.status(400).json({ error: error.error.message });
+    }
+
+    const result = await response.json();
+
+    // 7. Return status URL for polling
+    res.json({
+      orderId: order.id,
+      statusUrl: result.urls?.status,
+      message: 'Order submitted, awaiting payment confirmation'
+    });
+
+  } catch (err) {
+    res.status(400).json({ error: 'Invalid QR code' });
+  }
+});
+```
+
+## Vending Machine Integration
+
+Example for inventory-based vending machines.
+
+```javascript vending-machine.js
+import express from 'express';
+import QRCode from 'qrcode';
+import { signOrder, createAuthHeaders } from './utils.js';
+
+const app = express();
+app.use(express.json());
+
+const YOUR_OCID = 500;
+const YOUR_PRIVATE_KEY = process.env.PRIVATE_KEY;
+const YOUR_ENDPOINT = 'https://api.vending.example/opencharge';
+
+// Machine inventory
+const inventory = [
+  { id: 'A1', name: 'Coca-Cola', price: '2.50', quantity: 10 },
+  { id: 'A2', name: 'Sprite', price: '2.50', quantity: 8 },
+  { id: 'B1', name: 'Snickers', price: '1.75', quantity: 15 },
+  { id: 'B2', name: 'KitKat', price: '1.50', quantity: 12 }
+];
+
+const orders = new Map();
+
+// Serve inventory
+app.get('/inventory', (req, res) => {
+  res.json({
+    ocid: YOUR_OCID,
+    currency: 'USD',
+    items: inventory.map(item => ({
+      id: item.id,
+      name: item.name,
+      price: item.price,
+      quantity: item.quantity,
+      min_qty: 1,
+      max_qty: 3
+    }))
+  });
+});
+
+// Payment app requests order for selected items
+app.post('/orders/create', async (req, res) => {
+  const { items } = req.body;
+
+  // 1. Validate and calculate total
+  let total = 0;
+  const orderItems = [];
+
+  for (const requestedItem of items) {
+    const inventoryItem = inventory.find(i => i.id === requestedItem.id);
+
+    if (!inventoryItem) {
+      return res.status(400).json({
+        error: { code: 'INVALID_ITEM', message: `Item ${requestedItem.id} not found` }
+      });
+    }
+
+    if (requestedItem.quantity > inventoryItem.quantity) {
+      return res.status(400).json({
+        error: { code: 'INSUFFICIENT_STOCK', message: `Not enough ${inventoryItem.name} in stock` }
+      });
+    }
+
+    total += parseFloat(inventoryItem.price) * requestedItem.quantity;
+    orderItems.push({
+      id: inventoryItem.id,
+      name: inventoryItem.name,
+      quantity: requestedItem.quantity,
+      price: inventoryItem.price
+    });
+  }
+
+  // 2. Create order
+  const order = {
+    id: `ord_${crypto.randomUUID()}`,
+    ocid: YOUR_OCID,
+    amount: total.toFixed(2),
+    currency: 'USD',
+    items: orderItems,
+    createdAt: Math.floor(Date.now() / 1000),
+    expiresAt: Math.floor(Date.now() / 1000) + 300,
+    accepts: [100, 101, 102]
+  };
+
+  // 3. Sign and store
+  const signature = signOrder(order, YOUR_PRIVATE_KEY);
+  orders.set(order.id, { order, signature, status: 'pending', items: orderItems });
+
+  // 4. Return signed order
+  res.json({
+    order,
+    signature,
+    urls: {
+      order: [`${YOUR_ENDPOINT}/orders/${order.id}`],
+      completed: `${YOUR_ENDPOINT}/orders/${order.id}/success`,
+      cancelled: `${YOUR_ENDPOINT}/orders/${order.id}/cancelled`
+    }
+  });
+});
+
+// Webhook - dispense items on payment
+app.post('/transfer/webhook', async (req, res) => {
+  const { proof, signature } = req.body;
+
+  // Verify proof...
+
+  const stored = orders.get(proof.to.reference);
+  if (!stored) {
+    return res.status(400).json({
+      error: { code: 'ORDER_NOT_FOUND', message: 'Unknown order' }
+    });
+  }
+
+  // Update inventory and dispense
+  for (const item of stored.items) {
+    const inventoryItem = inventory.find(i => i.id === item.id);
+    if (inventoryItem) {
+      inventoryItem.quantity -= item.quantity;
+    }
+  }
+
+  stored.status = 'paid';
+
+  // Signal hardware to dispense items
+  await dispenseItems(stored.items);
+
+  res.json({ status: 'accepted', txid: proof.txid });
+});
+
+// Generate static inventory QR code on startup
+async function generateInventoryQR() {
+  const payload = {
+    ocid: YOUR_OCID,
+    inventory: `${YOUR_ENDPOINT}/inventory`,
+    expiresAt: null  // Permanent QR
+  };
+
+  const qrCode = await QRCode.toDataURL(JSON.stringify(payload));
+  console.log('Display this QR code on the vending machine:');
+  console.log(qrCode);
+}
+
+generateInventoryQR();
+```
+
+## Complete Webhook Handler
+
+Full implementation of the transfer webhook with proper verification.
+
+```javascript webhook-handler.js
+import express from 'express';
+import { verify, canonicalize } from './utils.js';
+
+const app = express();
+app.use(express.json());
+
+const YOUR_OCID = 500;
+const ACCEPTED_ISSUERS = [100, 101, 102];
+
+// Cache for issuer public keys
+const publicKeyCache = new Map();
+
+async function getPublicKey(ocid) {
+  if (publicKeyCache.has(ocid)) {
+    return publicKeyCache.get(ocid);
+  }
+
+  const endpoint = await resolveEndpointFromRegistry(ocid);
+  const metadata = await fetch(`${endpoint}/metadata.json`).then(r => r.json());
+
+  publicKeyCache.set(ocid, metadata.config.publicKey);
+  return metadata.config.publicKey;
+}
+
+app.post('/transfer/webhook', async (req, res) => {
+  const { proof, signature } = req.body;
+
+  // 1. Verify issuer is trusted
+  if (!ACCEPTED_ISSUERS.includes(proof.issuer)) {
+    console.log(`Rejected: untrusted issuer ${proof.issuer}`);
+    return res.status(400).json({
+      error: {
+        code: 'ISSUER_NOT_ACCEPTED',
+        message: `Issuer ${proof.issuer} is not in accepted list`
+      }
+    });
+  }
+
+  // 2. Verify proof signature
+  try {
+    const publicKey = await getPublicKey(proof.issuer);
+    const canonical = canonicalize(proof);
+
+    if (!verify(publicKey, signature, canonical)) {
+      console.log('Rejected: invalid signature');
+      return res.status(400).json({
+        error: {
+          code: 'PROOF_SIGNATURE_INVALID',
+          message: 'Proof signature verification failed'
+        }
+      });
+    }
+  } catch (err) {
+    console.error('Signature verification error:', err);
+    return res.status(500).json({
+      error: {
+        code: 'VERIFICATION_ERROR',
+        message: 'Could not verify signature'
+      }
+    });
+  }
+
+  // 3. Verify recipient is us
+  if (proof.to.ocid !== YOUR_OCID) {
+    console.log(`Rejected: wrong recipient ${proof.to.ocid}`);
+    return res.status(400).json({
+      error: {
+        code: 'INVALID_PROOF',
+        message: 'Proof recipient does not match our OCID'
+      }
+    });
+  }
+
+  // 4. Find matching order
+  const orderId = proof.to.reference;
+  const order = await db.getOrder(orderId);
+
+  if (!order) {
+    console.log(`Warning: unknown order reference ${orderId}`);
+    // Still accept - payment was made, we should investigate
+    return res.json({
+      status: 'accepted',
+      txid: proof.txid,
+      message: 'Payment received but order not found'
+    });
+  }
+
+  // 5. Verify amount and currency
+  if (proof.amount !== order.amount || proof.currency !== order.currency) {
+    console.log(`Amount mismatch: expected ${order.amount} ${order.currency}, got ${proof.amount} ${proof.currency}`);
+    return res.status(400).json({
+      error: {
+        code: 'AMOUNT_MISMATCH',
+        message: 'Payment amount does not match order'
+      }
+    });
+  }
+
+  // 6. Check for duplicate
+  if (order.status === 'paid') {
+    console.log(`Duplicate webhook for order ${orderId}`);
+    return res.json({
+      status: 'accepted',
+      txid: proof.txid,
+      message: 'Order already marked as paid'
+    });
+  }
+
+  // 7. Update order and fulfill
+  await db.updateOrder(orderId, {
+    status: 'paid',
+    txid: proof.txid,
+    paidAt: proof.timestamp,
+    proof: { proof, signature }
+  });
+
+  // 8. Trigger fulfillment asynchronously
+  fulfillOrder(order).catch(err => {
+    console.error(`Fulfillment error for ${orderId}:`, err);
+  });
+
+  console.log(`Payment confirmed for order ${orderId}: ${proof.txid}`);
+
+  res.json({
+    status: 'accepted',
+    txid: proof.txid
+  });
+});
+```
+
+## Next Steps
+
+- Review the [Payment Flows](/merchant-api/payment-flows) guide for flow diagrams
+- See [Transfer Webhook](/merchant-api/endpoint/transfer-webhook) for response format
+- Check [Error Codes](/guides/protocol/error-codes) for handling failures

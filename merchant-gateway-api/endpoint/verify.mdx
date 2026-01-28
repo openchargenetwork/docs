@@ -1,0 +1,113 @@
+---
+title: "Verify Transaction"
+description: "Verify a payment transaction and return signed proof"
+openapi: "GET /verify/{txid}"
+---
+
+<Info>
+Optional endpoint for merchants to verify payment status. Returns the transaction details and signed proof if the payment is complete.
+</Info>
+
+## Use Cases
+
+- Merchant wants to verify a payment they didn't receive a webhook for
+- Merchant's webhook handler failed and needs to recover
+- Auditing and reconciliation
+
+## Implementation
+
+```javascript
+app.get('/verify/:txid', async (req, res) => {
+  const { txid } = req.params;
+
+  // 1. Find the transaction
+  const payment = await db.getPayment(txid);
+  if (!payment) {
+    return res.status(404).json({
+      error: { code: 'TXID_NOT_FOUND', message: 'Transaction not found' }
+    });
+  }
+
+  // 2. Build response based on status
+  if (payment.status === 'pending_settlement') {
+    return res.json({
+      status: 'pending',
+      txid: payment.txid,
+      amount: payment.amount,
+      currency: payment.currency,
+      createdAt: payment.createdAt,
+      expiresAt: payment.expiresAt
+    });
+  }
+
+  if (payment.status === 'completed') {
+    // Reconstruct the proof
+    const proof = {
+      txid: payment.txid,
+      issuer: YOUR_OCID,
+      from: payment.from,
+      to: { ocid: payment.merchantOcid, reference: payment.orderId },
+      amount: payment.amount,
+      currency: payment.currency,
+      timestamp: payment.completedAt,
+      memo: payment.memo
+    };
+
+    const signature = signProof(proof);
+
+    return res.json({
+      status: 'completed',
+      proof,
+      signature
+    });
+  }
+
+  // Handle other statuses (failed, expired, etc.)
+  res.json({
+    status: payment.status,
+    txid: payment.txid
+  });
+});
+```
+
+## Response Examples
+
+**Completed payment:**
+
+```json
+{
+  "status": "completed",
+  "proof": {
+    "txid": "gateway_tx_456",
+    "issuer": 300,
+    "from": { "ocid": 200, "reference": "wallet_tx_123" },
+    "to": { "ocid": 500, "reference": "ord_abc123" },
+    "amount": "99.99",
+    "currency": "USD",
+    "timestamp": 1706500500
+  },
+  "signature": "a1b2c3..."
+}
+```
+
+**Pending payment:**
+
+```json
+{
+  "status": "pending",
+  "txid": "gateway_tx_456",
+  "amount": "99.99",
+  "currency": "USD",
+  "createdAt": 1706500000,
+  "expiresAt": 1706503600
+}
+```
+
+**Failed/expired:**
+
+```json
+{
+  "status": "expired",
+  "txid": "gateway_tx_456"
+}
+```

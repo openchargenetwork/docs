@@ -8,6 +8,12 @@
     "dark": "#791480"
   },
   "favicon": "/images/favicon.svg",
+  "openapi": [
+    "api-reference/openapi.json",
+    "merchant-api/openapi.json",
+    "merchant-gateway-api/openapi.json",
+    "payment-gateway-api/openapi.json"
+  ],
   "navigation": {
     "tabs": [
       {
@@ -75,50 +81,85 @@
         ]
       },
       {
-        "tab": "Gateway Examples",
+        "tab": "Merchant Gateway API",
         "groups": [
           {
             "group": "Overview",
             "pages": [
-              "api-reference/introduction"
+              "merchant-gateway-api/introduction"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "merchant-gateway-api/merchant-onboarding",
+              "merchant-gateway-api/payment-processing"
             ]
           },
           {
             "group": "Endpoints",
             "pages": [
-              "api-reference/endpoint/metadata",
-              "api-reference/endpoint/capabilities",
-              "api-reference/endpoint/transfer-create",
-              "api-reference/endpoint/payment-create",
-              "api-reference/endpoint/payment-settle",
-              "api-reference/endpoint/order-create-payment-gateway",
-              "api-reference/endpoint/order-checkout",
-              "api-reference/endpoint/verify"
+              "merchant-gateway-api/endpoint/metadata",
+              "merchant-gateway-api/endpoint/capabilities",
+              "merchant-gateway-api/endpoint/orders-checkout",
+              "merchant-gateway-api/endpoint/transfer-create",
+              "merchant-gateway-api/endpoint/transfer-webhook",
+              "merchant-gateway-api/endpoint/payment-create",
+              "merchant-gateway-api/endpoint/payment-settle",
+              "merchant-gateway-api/endpoint/verify"
             ]
           }
         ]
       },
       {
-        "tab": "Merchant Examples",
+        "tab": "Payment Gateway API",
         "groups": [
           {
             "group": "Overview",
             "pages": [
-              "api-reference/introduction"
+              "payment-gateway-api/introduction"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "payment-gateway-api/payment-flows"
             ]
           },
           {
             "group": "Endpoints",
             "pages": [
-              "api-reference/endpoint/metadata",
-              "api-reference/endpoint/capabilities",
-              "api-reference/endpoint/transfer-create",
-              "api-reference/endpoint/payment-create",
-              "api-reference/endpoint/payment-settle",
-              "api-reference/endpoint/order-create-merchant",
-              "api-reference/endpoint/order-status",
-              "api-reference/endpoint/inventory",
-              "api-reference/endpoint/verify"
+              "payment-gateway-api/endpoint/orders-create-session",
+              "payment-gateway-api/endpoint/transfer-create"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Merchant API",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "merchant-api/introduction"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "merchant-api/payment-flows",
+              "merchant-api/examples"
+            ]
+          },
+          {
+            "group": "Endpoints",
+            "pages": [
+              "merchant-api/endpoint/metadata",
+              "merchant-api/endpoint/capabilities",
+              "merchant-api/endpoint/order-create",
+              "merchant-api/endpoint/order-status",
+              "merchant-api/endpoint/inventory",
+              "merchant-api/endpoint/transfer-webhook"
             ]
           }
         ]

@@ -1,0 +1,46 @@
+---
+title: "Get Capabilities"
+description: "Return partner-specific capabilities for authenticated merchants"
+openapi: "GET /capabilities"
+---
+
+<Info>
+Unlike `/metadata.json`, this endpoint is authenticated. Return capabilities specific to the requesting merchant based on their partnership agreement.
+</Info>
+
+## Implementation
+
+```javascript
+app.get('/capabilities', verifyAuth, async (req, res) => {
+  const merchantOcid = req.headers['x-oc-id'];
+
+  // Get merchant-specific settings
+  const merchant = await db.getMerchant(merchantOcid);
+
+  if (!merchant) {
+    return res.status(401).json({
+      error: { code: 'MERCHANT_NOT_REGISTERED', message: 'Unknown merchant' }
+    });
+  }
+
+  res.json({
+    ocid: YOUR_OCID,
+    name: "PayFlow Gateway",
+    capabilities: merchant.enabledCapabilities || [
+      "orders.checkout",
+      "transfer.create",
+      "transfer.webhook"
+    ],
+    settlement: {
+      currencies: merchant.currencies || ["USD"],
+      accepts: merchant.acceptedSettlers || [100, 101]
+    }
+  });
+});
+```
+
+## Use Cases
+
+- Return different settlement options based on merchant tier
+- Enable/disable specific capabilities per merchant
+- Show different currencies based on merchant location

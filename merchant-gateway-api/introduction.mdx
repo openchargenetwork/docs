@@ -1,0 +1,188 @@
+---
+title: "Merchant Gateway API"
+description: "API reference for merchant gateways providing hosted checkout for online merchants"
+---
+
+## Overview
+
+A Merchant Gateway provides hosted checkout pages for online merchants. When a merchant integrates with your gateway, their customers are redirected to your payment page to complete transactions.
+
+<Card
+  title="OpenAPI Specification"
+  icon="code"
+  href="https://github.com/opencharge/docs/blob/main/merchant-gateway-api/openapi.json"
+>
+  View the complete Merchant Gateway OpenAPI specification
+</Card>
+
+## What You Build
+
+As a merchant gateway, you provide:
+
+1. **Hosted checkout page** - A payment UI where customers complete purchases
+2. **Multiple payment methods** - Credit cards, wallets, bank transfers, etc.
+3. **Settlement processing** - Moving funds from customers to merchants
+4. **Webhook notifications** - Informing merchants when payments complete
+
+## Base URL
+
+Host your API at the endpoint you register in the Router Registry:
+
+```
+https://pay.yourgateway.com/opencharge
+```
+
+## Endpoints
+
+| Endpoint | Method | Description |
+| -------- | ------ | ----------- |
+| `/metadata.json` | GET | Your gateway's public metadata |
+| `/capabilities` | GET | Partner-specific capabilities |
+| `/orders/checkout` | POST | Receive orders from merchants, return redirect URL |
+| `/transfer/create` | POST | Process internal and 3rd party transfers |
+| `/transfer/webhook` | POST | Receive payment proofs from settlement providers |
+| `/payment/create` | POST | Accept payment requests from 3rd party apps |
+| `/payment/settle` | POST | Complete payments with settlement proofs |
+| `/verify/{txid}` | GET | Verify transaction status |
+
+## Flow
+
+```
+┌──────────┐      ┌──────────┐      ┌───────────────┐
+│ Customer │      │ Merchant │      │ Your Gateway  │
+└────┬─────┘      └────┬─────┘      └───────┬───────┘
+     │                 │                    │
+     │ 1. Checkout     │                    │
+     │────────────────>│                    │
+     │                 │                    │
+     │                 │ 2. POST /orders/   │
+     │                 │    checkout        │
+     │                 │───────────────────>│
+     │                 │                    │
+     │                 │ 3. redirect_url    │
+     │                 │<───────────────────│
+     │                 │                    │
+     │ 4. Redirect     │                    │
+     │<────────────────│                    │
+     │                 │                    │
+     │ 5. Pay on your page                  │
+     │─────────────────────────────────────>│
+     │                 │                    │
+     │                 │ 6. Webhook (proof) │
+     │                 │<───────────────────│
+     │                 │                    │
+     │ 7. Redirect back                     │
+     │<─────────────────────────────────────│
+```
+
+## Authentication
+
+Verify merchant requests using these headers:
+
+| Header           | Description                          |
+| ---------------- | ------------------------------------ |
+| `X-OC-ID`        | Merchant's OCID                      |
+| `X-OC-Timestamp` | Unix timestamp in seconds            |
+| `X-OC-Nonce`     | Unique request identifier            |
+| `X-OC-Signature` | Signature of canonical request       |
+
+Verify signatures using the merchant's public key from their `/metadata.json`.
+
+## Order Verification
+
+When you receive an order at `/orders/checkout`:
+
+1. **Verify the merchant signature** on the order
+2. **Check the merchant is registered** with your gateway
+3. **Validate order details** (amount, currency, expiration)
+4. **Create a checkout session** and store the order
+5. **Return the redirect URL** to your payment page
+
+```javascript
+app.post('/orders/checkout', async (req, res) => {
+  const { order, signature, urls } = req.body;
+  const merchantOcid = req.headers['x-oc-id'];
+
+  // 1. Verify merchant signature
+  const publicKey = await getMerchantPublicKey(merchantOcid);
+  if (!verifyOrderSignature(order, signature, publicKey)) {
+    return res.status(400).json({
+      error: { code: 'INVALID_SIGNATURE', message: 'Order signature invalid' }
+    });
+  }
+
+  // 2. Check merchant is registered
+  if (!isMerchantRegistered(merchantOcid)) {
+    return res.status(401).json({
+      error: { code: 'MERCHANT_NOT_REGISTERED', message: 'Unknown merchant' }
+    });
+  }
+
+  // 3. Create checkout session
+  const session = await createCheckoutSession(order, urls, merchantOcid);
+
+  // 4. Return redirect URL
+  res.json({
+    redirect_url: `https://pay.yourgateway.com/checkout/${session.id}`
+  });
+});
+```
+
+## Notifying Merchants
+
+After payment completes, send a signed proof to the merchant's `/transfer/webhook`:
+
+```javascript
+async function notifyMerchant(session, proof) {
+  const merchantEndpoint = await getMerchantEndpoint(session.merchantOcid);
+
+  await fetch(`${merchantEndpoint}/transfer/webhook`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...createAuthHeaders(YOUR_OCID, YOUR_PRIVATE_KEY)
+    },
+    body: JSON.stringify({
+      proof: {
+        txid: proof.txid,
+        issuer: YOUR_OCID,
+        from: { ocid: session.customerOcid, reference: proof.txid },
+        to: { ocid: session.merchantOcid, reference: session.order.id },
+        amount: session.order.amount,
+        currency: session.order.currency,
+        timestamp: Math.floor(Date.now() / 1000),
+        memo: `Payment for ${session.order.id}`
+      },
+      signature: signProof(proof, YOUR_PRIVATE_KEY)
+    })
+  });
+}
+```
+
+## Settlement
+
+You must be able to settle with the merchant. Check the order's `accepts` array:
+
+- If you're in `accepts`, you can sign proofs directly
+- If not, you need to settle via a common third party
+
+```javascript
+function canSettleDirectly(order) {
+  return order.accepts.includes(YOUR_OCID);
+}
+```
+
+## Error Handling
+
+Return errors in this format:
+
+```json
+{
+  "error": {
+    "code": "MERCHANT_NOT_REGISTERED",
+    "message": "Merchant OCID 500 is not registered with this gateway"
+  }
+}
+```
+
+See [Error Codes](/guides/protocol/error-codes) for the complete list.

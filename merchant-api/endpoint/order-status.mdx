@@ -1,0 +1,61 @@
+---
+title: "Get Order Status"
+description: "Return the current payment status of an order"
+openapi: "GET /orders/{orderId}/status"
+---
+
+<Info>
+Payment apps and customers poll this endpoint to check if an order has been paid.
+</Info>
+
+## Status Values
+
+| Status | Description |
+| ------ | ----------- |
+| `pending` | Order created, awaiting payment |
+| `paid` | Payment received and verified |
+| `expired` | Order expired before payment |
+| `cancelled` | Order was cancelled |
+
+## Implementation
+
+When you receive a transfer webhook notification, update your order status to `paid` and store the transaction ID. This endpoint should return that status.
+
+```javascript
+app.get('/orders/:orderId/status', (req, res) => {
+  const order = db.getOrder(req.params.orderId);
+
+  if (!order) {
+    return res.status(404).json({
+      error: { code: 'ORDER_NOT_FOUND', message: 'Order not found' }
+    });
+  }
+
+  res.json({
+    orderId: order.id,
+    status: order.status,
+    paidAt: order.paidAt,
+    txid: order.txid
+  });
+});
+```
+
+## Example Response
+
+**Pending order:**
+```json
+{
+  "orderId": "ord_abc123",
+  "status": "pending"
+}
+```
+
+**Paid order:**
+```json
+{
+  "orderId": "ord_abc123",
+  "status": "paid",
+  "paidAt": 1706313900,
+  "txid": "tx_xyz789"
+}
+```

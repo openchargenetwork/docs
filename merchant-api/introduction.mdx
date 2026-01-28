@@ -1,0 +1,84 @@
+---
+title: "Merchant API"
+description: "API reference for merchants integrating with Opencharge to accept payments"
+---
+
+## Overview
+
+The Merchant API defines the endpoints that merchants implement to accept payments via the Opencharge protocol. Payment apps and gateways call these endpoints on your server to create orders, check payment status, and notify you of completed payments.
+
+<Card
+  title="OpenAPI Specification"
+  icon="code"
+  href="https://github.com/opencharge/docs/blob/main/merchant-api/openapi.json"
+>
+  View the complete Merchant OpenAPI specification
+</Card>
+
+## Base URL
+
+Host your Merchant API at the endpoint you register in the Router Registry:
+
+```
+https://api.yourmerchant.com/opencharge
+```
+
+## Endpoints
+
+| Endpoint | Method | Description |
+| -------- | ------ | ----------- |
+| `/metadata.json` | GET | Your OCID metadata (public key, capabilities) |
+| `/capabilities` | GET | Partner-specific capabilities |
+| `/orders/create` | POST | Create and sign an order |
+| `/orders/{orderId}/status` | GET | Return order payment status |
+| `/inventory` | GET | Return available items |
+| `/transfer/webhook` | POST | Receive payment notifications |
+
+## Authentication
+
+Requests to your endpoints include **secp256k1 ECDSA signatures** in these headers:
+
+| Header           | Description                          | Example        |
+| ---------------- | ------------------------------------ | -------------- |
+| `X-OC-ID`        | Caller's OCID (Opencharge ID)        | `200`          |
+| `X-OC-Timestamp` | Unix timestamp in seconds            | `1706500000`   |
+| `X-OC-Nonce`     | Unique request identifier            | `req_abc123`   |
+| `X-OC-Signature` | Signature of canonical request       | `a1b2c3...1b`  |
+
+Verify these signatures using the caller's public key from their `/metadata.json` endpoint. See [Request Authentication](/guides/protocol/request-authentication) for details.
+
+## Signing Orders
+
+When you create an order, you must sign it with your private key:
+
+```javascript
+const order = {
+  id: "ord_abc123",
+  ocid: 500,  // Your merchant OCID
+  amount: "15.00",
+  currency: "USD",
+  createdAt: Math.floor(Date.now() / 1000),
+  expiresAt: Math.floor(Date.now() / 1000) + 3600,
+  accepts: [100, 101, 102]  // Settlement providers you accept
+};
+
+const canonical = JSON.stringify(order, Object.keys(order).sort());
+const signature = secp256k1_sign(privateKey, SHA256(canonical));
+```
+
+See [Merchant Orders](/guides/protocol/merchant-orders) for complete implementation guidance.
+
+## Error Handling
+
+Return errors in this format:
+
+```json
+{
+  "error": {
+    "code": "ORDER_NOT_FOUND",
+    "message": "Order ord_xyz does not exist"
+  }
+}
+```
+
+See [Error Codes](/guides/protocol/error-codes) for the complete list.

@@ -1,0 +1,570 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Opencharge Payment Gateway API",
+    "description": "API specification for payment gateways (wallet apps) integrating with the Opencharge protocol. Payment gateways onboard end users, maintain their wallets, and help them pay merchants.",
+    "version": "0.1.0",
+    "license": {
+      "name": "MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.wallet.example/opencharge",
+      "description": "Example payment gateway Opencharge endpoint"
+    }
+  ],
+  "paths": {
+    "/metadata.json": {
+      "get": {
+        "operationId": "getMetadata",
+        "summary": "Get OCID metadata",
+        "description": "Returns your gateway's metadata including public key, endpoint URL, and capabilities. Merchants fetch this to verify your signatures and discover your capabilities.",
+        "responses": {
+          "200": {
+            "description": "OCID metadata document",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OCIDMetadata" },
+                "example": {
+                  "opencharge": "0.1",
+                  "name": "QuickPay Wallet",
+                  "description": "Mobile wallet for fast payments",
+                  "icon": "https://wallet.example/icon.png",
+                  "config": {
+                    "publicKey": "a34b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b",
+                    "endpoint": "https://api.wallet.example/opencharge",
+                    "capabilities": [
+                      "orders.create.session",
+                      "transfer.create",
+                      "transfer.webhook"
+                    ],
+                    "settlement": {
+                      "currencies": ["USD", "EUR"],
+                      "accepts": [100, 101, 102]
+                    }
+                  },
+                  "signature": "a1b2c3d4e5f6...7f1b",
+                  "contact": "dev@wallet.example"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/capabilities": {
+      "get": {
+        "operationId": "getCapabilities",
+        "summary": "Get service capabilities",
+        "description": "Authenticated endpoint for partners to discover their specific capabilities at your gateway.",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-OC-ID" },
+          { "$ref": "#/components/parameters/X-OC-Timestamp" },
+          { "$ref": "#/components/parameters/X-OC-Nonce" },
+          { "$ref": "#/components/parameters/X-OC-Signature" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Service capabilities for the authenticated partner",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Capabilities" },
+                "example": {
+                  "ocid": 200,
+                  "name": "QuickPay Wallet",
+                  "capabilities": ["orders.create.session", "transfer.create"],
+                  "settlement": {
+                    "currencies": ["USD"],
+                    "accepts": [100, 101]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/create/{sessionId}": {
+      "post": {
+        "operationId": "createOrderSession",
+        "summary": "Submit order to session",
+        "description": "Merchants POST signed orders to this endpoint after scanning your user's QR code. The sessionId identifies which user will pay. Verify the order, debit the user, and return a status URL.",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "description": "Temporary session ID from QR code that identifies the paying user",
+            "schema": { "type": "string" }
+          },
+          { "$ref": "#/components/parameters/X-OC-ID" },
+          { "$ref": "#/components/parameters/X-OC-Timestamp" },
+          { "$ref": "#/components/parameters/X-OC-Nonce" },
+          { "$ref": "#/components/parameters/X-OC-Signature" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/OrderSessionRequest" },
+              "example": {
+                "order": {
+                  "id": "ord_abc123",
+                  "ocid": 500,
+                  "reference": "POS-001",
+                  "amount": "25.00",
+                  "currency": "USD",
+                  "items": [
+                    { "id": "item_001", "name": "Coffee", "quantity": 2, "price": "5.00" },
+                    { "id": "item_002", "name": "Sandwich", "quantity": 1, "price": "15.00" }
+                  ],
+                  "memo": "Order #42",
+                  "createdAt": 1706313600,
+                  "expiresAt": 1706400000,
+                  "accepts": [100, 101, 102]
+                },
+                "signature": "a1b2c3d4e5f6...merchant_sig",
+                "urls": {
+                  "order": ["https://merchant.example/orders/ord_abc123"],
+                  "completed": "https://merchant.example/checkout/success",
+                  "cancelled": "https://merchant.example/checkout/cancelled"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Order received, payment processing",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OrderSessionResponse" },
+                "example": {
+                  "urls": {
+                    "status": "https://api.wallet.example/orders/ord_abc123/status"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or signature",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found or expired",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "410": {
+            "description": "Session already used",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transfer/create": {
+      "post": {
+        "operationId": "createTransfer",
+        "summary": "Create transfer",
+        "description": "Request a transfer from one account to another. Used internally by your app to pay merchants, or externally by partners with reserve accounts.",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-OC-ID" },
+          { "$ref": "#/components/parameters/X-OC-Timestamp" },
+          { "$ref": "#/components/parameters/X-OC-Nonce" },
+          { "$ref": "#/components/parameters/X-OC-Signature" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TransferCreateRequest" },
+              "example": {
+                "from": { "ocid": 200, "reference": "user_123" },
+                "to": { "ocid": 500, "reference": "ord_abc123" },
+                "amount": "25.00",
+                "currency": "USD",
+                "memo": "Payment for order",
+                "order": {
+                  "id": "ord_abc123",
+                  "urls": ["https://merchant.example/orders/ord_abc123"]
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Transfer completed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TransferCreateResponse" },
+                "example": {
+                  "proof": {
+                    "txid": "wallet_tx_789",
+                    "issuer": 200,
+                    "from": { "ocid": 200, "reference": "user_123" },
+                    "to": { "ocid": 500, "reference": "ord_abc123" },
+                    "amount": "25.00",
+                    "currency": "USD",
+                    "timestamp": 1706500500,
+                    "memo": "Payment for order"
+                  },
+                  "signature": "a1b2c3d4e5f6..."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient funds",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transfer/webhook": {
+      "post": {
+        "operationId": "transferWebhook",
+        "summary": "Instant Transfer Notification (ITN)",
+        "description": "Receive signed transfer proofs when transfers involving your OCID complete. Use this to credit user accounts or update payment status.",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-OC-ID" },
+          { "$ref": "#/components/parameters/X-OC-Timestamp" },
+          { "$ref": "#/components/parameters/X-OC-Nonce" },
+          { "$ref": "#/components/parameters/X-OC-Signature" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TransferWebhookRequest" },
+              "example": {
+                "proof": {
+                  "txid": "gateway_tx_456",
+                  "issuer": 100,
+                  "from": { "ocid": 300, "reference": "funding_123" },
+                  "to": { "ocid": 200, "reference": "user_456" },
+                  "amount": "100.00",
+                  "currency": "USD",
+                  "timestamp": 1706500500,
+                  "memo": "Wallet top-up"
+                },
+                "signature": "a1b2c3d4e5f6..."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Notification processed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TransferWebhookResponse" },
+                "example": {
+                  "status": "accepted",
+                  "txid": "gateway_tx_456"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid proof",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "X-OC-ID": {
+        "name": "X-OC-ID",
+        "in": "header",
+        "required": true,
+        "description": "Caller's OCID",
+        "schema": { "type": "string" },
+        "example": "500"
+      },
+      "X-OC-Timestamp": {
+        "name": "X-OC-Timestamp",
+        "in": "header",
+        "required": true,
+        "description": "Unix timestamp in seconds",
+        "schema": { "type": "string" },
+        "example": "1706500000"
+      },
+      "X-OC-Nonce": {
+        "name": "X-OC-Nonce",
+        "in": "header",
+        "required": true,
+        "description": "Unique request identifier",
+        "schema": { "type": "string" },
+        "example": "req_abc123"
+      },
+      "X-OC-Signature": {
+        "name": "X-OC-Signature",
+        "in": "header",
+        "required": true,
+        "description": "secp256k1 ECDSA signature",
+        "schema": { "type": "string" },
+        "example": "a1b2c3d4...7f1b"
+      }
+    },
+    "schemas": {
+      "OCIDMetadata": {
+        "type": "object",
+        "required": ["opencharge", "name", "config", "signature"],
+        "properties": {
+          "opencharge": { "type": "string" },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "icon": { "type": "string", "format": "uri" },
+          "config": { "$ref": "#/components/schemas/OCIDConfig" },
+          "signature": { "type": "string" },
+          "contact": { "type": "string" }
+        }
+      },
+      "OCIDConfig": {
+        "type": "object",
+        "required": ["publicKey", "endpoint", "capabilities"],
+        "properties": {
+          "publicKey": { "type": "string", "pattern": "^[a-fA-F0-9]{128}$" },
+          "endpoint": { "type": "string", "format": "uri" },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["orders.create.session", "transfer.create", "transfer.webhook"]
+            }
+          },
+          "settlement": {
+            "type": "object",
+            "properties": {
+              "currencies": { "type": "array", "items": { "type": "string" } },
+              "accepts": { "type": "array", "items": { "type": "integer" } }
+            }
+          }
+        }
+      },
+      "Capabilities": {
+        "type": "object",
+        "required": ["ocid", "name", "capabilities"],
+        "properties": {
+          "ocid": { "type": "integer" },
+          "name": { "type": "string" },
+          "capabilities": { "type": "array", "items": { "type": "string" } },
+          "settlement": { "$ref": "#/components/schemas/SettlementInfo" }
+        }
+      },
+      "SettlementInfo": {
+        "type": "object",
+        "properties": {
+          "currencies": { "type": "array", "items": { "type": "string" } },
+          "accepts": { "type": "array", "items": { "type": "integer" } }
+        }
+      },
+      "Order": {
+        "type": "object",
+        "required": ["id", "ocid", "amount", "currency", "createdAt"],
+        "properties": {
+          "id": { "type": "string" },
+          "ocid": { "type": "integer" },
+          "reference": { "type": "string" },
+          "amount": { "type": "string" },
+          "currency": { "type": "string" },
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/OrderItem" } },
+          "memo": { "type": "string" },
+          "expiresAt": { "type": "integer" },
+          "createdAt": { "type": "integer" },
+          "accepts": { "type": "array", "items": { "type": "integer" } }
+        }
+      },
+      "OrderItem": {
+        "type": "object",
+        "required": ["id", "name", "quantity", "price"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "quantity": { "type": "number" },
+          "price": { "type": "string" }
+        }
+      },
+      "OrderSessionRequest": {
+        "type": "object",
+        "required": ["order", "signature", "urls"],
+        "properties": {
+          "order": { "$ref": "#/components/schemas/Order" },
+          "signature": { "type": "string" },
+          "urls": {
+            "type": "object",
+            "properties": {
+              "order": { "type": "array", "items": { "type": "string", "format": "uri" } },
+              "completed": { "type": "string", "format": "uri" },
+              "cancelled": { "type": "string", "format": "uri" }
+            }
+          }
+        }
+      },
+      "OrderSessionResponse": {
+        "type": "object",
+        "required": ["urls"],
+        "properties": {
+          "urls": {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string", "format": "uri" }
+            }
+          }
+        }
+      },
+      "TransferCreateRequest": {
+        "type": "object",
+        "required": ["from", "to", "amount", "currency"],
+        "properties": {
+          "from": {
+            "type": "object",
+            "properties": {
+              "ocid": { "type": "integer" },
+              "reference": { "type": "string" }
+            }
+          },
+          "to": {
+            "type": "object",
+            "properties": {
+              "ocid": { "type": "integer" },
+              "reference": { "type": "string" }
+            }
+          },
+          "amount": { "type": "string" },
+          "currency": { "type": "string" },
+          "memo": { "type": "string" },
+          "order": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "urls": { "type": "array", "items": { "type": "string", "format": "uri" } }
+            }
+          }
+        }
+      },
+      "TransferCreateResponse": {
+        "type": "object",
+        "required": ["proof", "signature"],
+        "properties": {
+          "proof": { "$ref": "#/components/schemas/TransactionProof" },
+          "signature": { "type": "string" }
+        }
+      },
+      "TransactionProof": {
+        "type": "object",
+        "required": ["txid", "issuer", "from", "to", "amount", "currency", "timestamp"],
+        "properties": {
+          "txid": { "type": "string" },
+          "issuer": { "type": "integer" },
+          "from": {
+            "type": "object",
+            "properties": {
+              "ocid": { "type": "integer" },
+              "reference": { "type": "string" }
+            }
+          },
+          "to": {
+            "type": "object",
+            "properties": {
+              "ocid": { "type": "integer" },
+              "reference": { "type": "string" }
+            }
+          },
+          "amount": { "type": "string" },
+          "currency": { "type": "string" },
+          "timestamp": { "type": "integer" },
+          "memo": { "type": "string" }
+        }
+      },
+      "TransferWebhookRequest": {
+        "type": "object",
+        "required": ["proof", "signature"],
+        "properties": {
+          "proof": { "$ref": "#/components/schemas/TransactionProof" },
+          "signature": { "type": "string" }
+        }
+      },
+      "TransferWebhookResponse": {
+        "type": "object",
+        "required": ["status", "txid"],
+        "properties": {
+          "status": { "type": "string", "enum": ["accepted", "rejected"] },
+          "txid": { "type": "string" },
+          "message": { "type": "string" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "INVALID_SIGNATURE",
+                  "TIMESTAMP_EXPIRED",
+                  "NONCE_REUSED",
+                  "UNKNOWN_OCID",
+                  "SESSION_NOT_FOUND",
+                  "SESSION_EXPIRED",
+                  "SESSION_USED",
+                  "INVALID_PROOF",
+                  "PROOF_SIGNATURE_INVALID",
+                  "ISSUER_NOT_ACCEPTED",
+                  "INSUFFICIENT_FUNDS",
+                  "ACCOUNT_NOT_FOUND"
+                ]
+              },
+              "message": { "type": "string" },
+              "details": { "type": "object" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

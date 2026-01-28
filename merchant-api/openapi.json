@@ -1,0 +1,1056 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Opencharge Merchant API",
+    "description": "API specification for merchants integrating with the Opencharge protocol. These endpoints are implemented by merchants and called by payment apps and gateways.",
+    "version": "0.1.0",
+    "license": {
+      "name": "MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.merchant.example/opencharge",
+      "description": "Example merchant Opencharge endpoint"
+    }
+  ],
+  "paths": {
+    "/metadata.json": {
+      "get": {
+        "operationId": "getMetadata",
+        "summary": "Get OCID metadata",
+        "description": "Returns the service's metadata including public key, endpoint URL, capabilities, and settlement preferences. This endpoint is hosted at the URL registered in the Router Registry smart contract. Other services fetch this to discover how to interact with your service and verify your signatures.",
+        "responses": {
+          "200": {
+            "description": "OCID metadata document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OCIDMetadata"
+                },
+                "example": {
+                  "opencharge": "0.1",
+                  "name": "Coffee Shop",
+                  "description": "Local coffee shop accepting Opencharge payments",
+                  "icon": "https://merchant.example/icon.png",
+                  "config": {
+                    "publicKey": "a34b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b",
+                    "endpoint": "https://api.merchant.example/opencharge",
+                    "capabilities": [
+                      "orders.create",
+                      "orders.status",
+                      "transfer.webhook"
+                    ],
+                    "settlement": {
+                      "currencies": ["USD"],
+                      "accepts": [100, 101, 102]
+                    }
+                  },
+                  "signature": "a1b2c3d4e5f6...7f1b",
+                  "contact": "support@merchant.example"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/capabilities": {
+      "get": {
+        "operationId": "getCapabilities",
+        "summary": "Get service capabilities",
+        "description": "Authenticated endpoint for partners to discover their specific capabilities and permissions at your merchant. Unlike the public /metadata.json, this returns the exact capabilities available to the requesting OCID based on your service preferences or partnership agreements.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/X-OC-ID"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Timestamp"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Nonce"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Signature"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Service capabilities and settlement preferences for the authenticated OCID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Capabilities"
+                },
+                "example": {
+                  "ocid": 500,
+                  "name": "Coffee Shop",
+                  "capabilities": [
+                    "orders.create",
+                    "orders.status",
+                    "transfer.webhook"
+                  ],
+                  "settlement": {
+                    "currencies": ["USD"],
+                    "accepts": [100, 101]
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/create": {
+      "post": {
+        "operationId": "createOrder",
+        "summary": "Create order",
+        "description": "Payment apps call this endpoint to request a signed order from your merchant. Create the order, sign it, and return it with status URLs. The payment app can then process payment and notify you via the transfer webhook or the status URL.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/X-OC-ID"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Timestamp"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Nonce"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Signature"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderCreateRequest"
+              },
+              "example": {
+                "id": "ord_abc123",
+                "ocid": 500,
+                "reference": "store-42",
+                "amount": "15.00",
+                "currency": "USD",
+                "items": [
+                  {
+                    "id": "item_001",
+                    "name": "Large Coffee",
+                    "quantity": 2,
+                    "price": "5.00"
+                  },
+                  {
+                    "id": "item_002",
+                    "name": "Croissant",
+                    "quantity": 1,
+                    "price": "5.00"
+                  }
+                ],
+                "memo": "Table 5",
+                "expiresAt": 1706400000
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed order returned successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderCreateMerchantResponse"
+                },
+                "example": {
+                  "order": {
+                    "id": "ord_abc123",
+                    "ocid": 500,
+                    "reference": "store-42",
+                    "amount": "15.00",
+                    "currency": "USD",
+                    "items": [
+                      {
+                        "id": "item_001",
+                        "name": "Large Coffee",
+                        "quantity": 2,
+                        "price": "5.00"
+                      },
+                      {
+                        "id": "item_002",
+                        "name": "Croissant",
+                        "quantity": 1,
+                        "price": "5.00"
+                      }
+                    ],
+                    "memo": "Table 5",
+                    "createdAt": 1706313600,
+                    "expiresAt": 1706400000,
+                    "accepts": [100, 101, 102]
+                  },
+                  "signature": "a1b2c3d4e5f6...7f1b",
+                  "urls": {
+                    "order": [
+                      "https://merchant.example/orders/ord_abc123"
+                    ],
+                    "completed": "https://merchant.example/checkout/success",
+                    "cancelled": "https://merchant.example/checkout/cancelled"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/{orderId}/status": {
+      "get": {
+        "operationId": "getOrderStatus",
+        "summary": "Get order status",
+        "description": "Return the current payment status of an order. Payment apps and customers call this endpoint to check if an order has been paid.",
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "description": "The order ID from the signed order object",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order status retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderStatusResponse"
+                },
+                "example": {
+                  "orderId": "ord_abc123",
+                  "status": "paid",
+                  "paidAt": 1706313900,
+                  "txid": "tx_xyz789"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Order not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inventory": {
+      "get": {
+        "operationId": "getInventory",
+        "summary": "Get inventory",
+        "description": "Return your merchant's full inventory. Designed for small inventories such as vending machines or kiosks. Payment apps call this endpoint to display available items before creating an order.",
+        "responses": {
+          "200": {
+            "description": "Inventory retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryResponse"
+                },
+                "example": {
+                  "ocid": 500,
+                  "currency": "USD",
+                  "items": [
+                    {
+                      "id": "item_001",
+                      "name": "Coca-Cola",
+                      "description": "330ml can",
+                      "price": "2.50",
+                      "quantity": 15,
+                      "min_qty": 1,
+                      "max_qty": 5,
+                      "images": ["https://merchant.example/images/coke.jpg"],
+                      "url": "https://merchant.example/products/coca-cola"
+                    },
+                    {
+                      "id": "item_002",
+                      "name": "Snickers Bar",
+                      "description": "52g chocolate bar",
+                      "price": "1.75",
+                      "quantity": 8,
+                      "min_qty": 1,
+                      "max_qty": 10,
+                      "images": ["https://merchant.example/images/snickers.jpg"],
+                      "url": "https://merchant.example/products/snickers"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transfer/webhook": {
+      "post": {
+        "operationId": "transferWebhook",
+        "summary": "Instant Transfer Notification (ITN)",
+        "description": "Receive signed transfer proofs on this endpoint. When a transfer involving your OCID is completed, a signed proof is POSTed here. Verify the proof signature, validate the issuer is trusted, and take appropriate action (e.g., mark order as paid, fulfill the order).",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/X-OC-ID"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Timestamp"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Nonce"
+          },
+          {
+            "$ref": "#/components/parameters/X-OC-Signature"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferWebhookRequest"
+              },
+              "example": {
+                "proof": {
+                  "txid": "gateway_tx_456",
+                  "issuer": 100,
+                  "from": {
+                    "ocid": 200,
+                    "reference": "wallet_tx_123"
+                  },
+                  "to": {
+                    "ocid": 500,
+                    "reference": "ord_abc123"
+                  },
+                  "amount": "15.00",
+                  "currency": "USD",
+                  "timestamp": 1706500500,
+                  "memo": "Payment for ord_abc123"
+                },
+                "signature": "a1b2c3d4e5f6..."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Notification received and processed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransferWebhookResponse"
+                },
+                "example": {
+                  "status": "accepted",
+                  "txid": "gateway_tx_456"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid proof or signature",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "X-OC-ID": {
+        "name": "X-OC-ID",
+        "in": "header",
+        "required": true,
+        "description": "Sender's OCID (Opencharge ID)",
+        "schema": {
+          "type": "string"
+        },
+        "example": "200"
+      },
+      "X-OC-Timestamp": {
+        "name": "X-OC-Timestamp",
+        "in": "header",
+        "required": true,
+        "description": "Unix timestamp in seconds",
+        "schema": {
+          "type": "string"
+        },
+        "example": "1706500000"
+      },
+      "X-OC-Nonce": {
+        "name": "X-OC-Nonce",
+        "in": "header",
+        "required": true,
+        "description": "Unique request identifier for replay protection",
+        "schema": {
+          "type": "string"
+        },
+        "example": "req_abc123"
+      },
+      "X-OC-Signature": {
+        "name": "X-OC-Signature",
+        "in": "header",
+        "required": true,
+        "description": "secp256k1 ECDSA signature of the canonical request",
+        "schema": {
+          "type": "string"
+        },
+        "example": "a1b2c3d4...7f1b"
+      }
+    },
+    "schemas": {
+      "OCIDMetadata": {
+        "type": "object",
+        "required": [
+          "opencharge",
+          "name",
+          "config",
+          "signature"
+        ],
+        "description": "Metadata document hosted at the URL registered in the Router Registry. Contains everything other services need to interact with your OCID.",
+        "properties": {
+          "opencharge": {
+            "type": "string",
+            "description": "Protocol version",
+            "example": "0.1"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable service name",
+            "example": "Coffee Shop"
+          },
+          "description": {
+            "type": "string",
+            "description": "Service description"
+          },
+          "icon": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL to service logo/icon"
+          },
+          "config": {
+            "$ref": "#/components/schemas/OCIDConfig"
+          },
+          "signature": {
+            "type": "string",
+            "description": "secp256k1 signature of the canonicalized config JSON. Proves the config was set by the key holder."
+          },
+          "contact": {
+            "type": "string",
+            "description": "Integration support contact (email or URL)"
+          }
+        }
+      },
+      "OCIDConfig": {
+        "type": "object",
+        "required": [
+          "publicKey",
+          "endpoint",
+          "capabilities"
+        ],
+        "description": "Payment-critical configuration that is signed by the OCID owner. Changes to this object require a new signature.",
+        "properties": {
+          "publicKey": {
+            "type": "string",
+            "pattern": "^[a-fA-F0-9]{128}$",
+            "description": "secp256k1 public key (128 hex chars, uncompressed format without 04 prefix)"
+          },
+          "endpoint": {
+            "type": "string",
+            "format": "uri",
+            "description": "Base URL for Opencharge API endpoints"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "orders.create",
+                "orders.status",
+                "inventory.get",
+                "transfer.webhook"
+              ]
+            },
+            "description": "List of supported operations"
+          },
+          "settlement": {
+            "type": "object",
+            "description": "Settlement configuration",
+            "properties": {
+              "currencies": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Supported ISO 4217 currency codes"
+              },
+              "accepts": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                },
+                "description": "OCIDs accepted for settlement proofs"
+              }
+            }
+          }
+        }
+      },
+      "Capabilities": {
+        "type": "object",
+        "required": [
+          "ocid",
+          "name",
+          "capabilities"
+        ],
+        "properties": {
+          "ocid": {
+            "type": "integer",
+            "description": "Your merchant's Opencharge ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable service name"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "orders.create",
+                "orders.status",
+                "inventory.get",
+                "transfer.webhook"
+              ]
+            },
+            "description": "List of supported operations"
+          },
+          "settlement": {
+            "$ref": "#/components/schemas/SettlementInfo"
+          }
+        }
+      },
+      "SettlementInfo": {
+        "type": "object",
+        "properties": {
+          "currencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Supported ISO 4217 currency codes"
+          },
+          "accepts": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "OCIDs accepted for settlement"
+          }
+        }
+      },
+      "Order": {
+        "type": "object",
+        "required": [
+          "id",
+          "ocid",
+          "amount",
+          "currency",
+          "createdAt"
+        ],
+        "description": "An order object signed by your merchant's private key.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique order identifier"
+          },
+          "ocid": {
+            "type": "integer",
+            "description": "Your merchant's OCID"
+          },
+          "reference": {
+            "type": "string",
+            "description": "Your internal reference"
+          },
+          "amount": {
+            "type": "string",
+            "description": "Total amount as decimal string"
+          },
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217 currency code"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItem"
+            },
+            "description": "Line items in the order"
+          },
+          "memo": {
+            "type": "string",
+            "description": "Customer-facing note"
+          },
+          "expiresAt": {
+            "type": "integer",
+            "description": "Unix timestamp when order expires"
+          },
+          "createdAt": {
+            "type": "integer",
+            "description": "Unix timestamp of order creation"
+          },
+          "accepts": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "OCIDs accepted for payment settlement"
+          }
+        }
+      },
+      "OrderItem": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "quantity",
+          "price"
+        ],
+        "description": "A line item within an order",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Item identifier"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name"
+          },
+          "quantity": {
+            "type": "number",
+            "description": "Quantity ordered"
+          },
+          "price": {
+            "type": "string",
+            "description": "Unit price as decimal string"
+          }
+        }
+      },
+      "OrderCreateRequest": {
+        "type": "object",
+        "required": [
+          "id",
+          "ocid",
+          "amount",
+          "currency"
+        ],
+        "description": "Request from a payment app to create and sign an order",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique order identifier"
+          },
+          "ocid": {
+            "type": "integer",
+            "description": "Your merchant's OCID"
+          },
+          "reference": {
+            "type": "string",
+            "description": "Your internal reference"
+          },
+          "amount": {
+            "type": "string",
+            "description": "Total amount as decimal string"
+          },
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217 currency code"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItem"
+            },
+            "description": "Line items in the order"
+          },
+          "memo": {
+            "type": "string",
+            "description": "Customer-facing note"
+          },
+          "expiresAt": {
+            "type": "integer",
+            "description": "Unix timestamp when order expires"
+          }
+        }
+      },
+      "OrderCreateMerchantResponse": {
+        "type": "object",
+        "required": [
+          "order",
+          "signature"
+        ],
+        "description": "Your response containing the signed order",
+        "properties": {
+          "order": {
+            "$ref": "#/components/schemas/Order"
+          },
+          "signature": {
+            "type": "string",
+            "description": "Your secp256k1 signature of the canonicalized order JSON"
+          },
+          "urls": {
+            "type": "object",
+            "required": [
+              "completed",
+              "cancelled"
+            ],
+            "description": "Callback URLs for order lifecycle",
+            "properties": {
+              "order": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "description": "URLs where the order can be retrieved"
+              },
+              "completed": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to redirect user after successful payment"
+              },
+              "cancelled": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to redirect user if payment is cancelled"
+              }
+            }
+          }
+        }
+      },
+      "OrderStatusResponse": {
+        "type": "object",
+        "required": [
+          "orderId",
+          "status"
+        ],
+        "description": "Current payment status of an order",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "description": "The order ID"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "paid",
+              "expired",
+              "cancelled"
+            ],
+            "description": "Current payment status"
+          },
+          "paidAt": {
+            "type": "integer",
+            "description": "Unix timestamp when order was paid"
+          },
+          "txid": {
+            "type": "string",
+            "description": "Transaction ID of the payment"
+          }
+        }
+      },
+      "InventoryResponse": {
+        "type": "object",
+        "required": [
+          "ocid",
+          "items"
+        ],
+        "description": "Your merchant's full inventory listing",
+        "properties": {
+          "ocid": {
+            "type": "integer",
+            "description": "Your merchant's OCID"
+          },
+          "currency": {
+            "type": "string",
+            "description": "Default ISO 4217 currency code for item prices"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InventoryItem"
+            },
+            "description": "Available inventory items"
+          }
+        }
+      },
+      "InventoryItem": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "price"
+        ],
+        "description": "An item available for purchase",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique item identifier"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name"
+          },
+          "description": {
+            "type": "string",
+            "description": "Item description"
+          },
+          "price": {
+            "type": "string",
+            "description": "Unit price as decimal string"
+          },
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217 currency code (overrides response-level currency)"
+          },
+          "quantity": {
+            "type": "integer",
+            "description": "Available stock quantity"
+          },
+          "min_qty": {
+            "type": "integer",
+            "description": "Minimum order quantity",
+            "default": 1
+          },
+          "max_qty": {
+            "type": "integer",
+            "description": "Maximum order quantity"
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "description": "URLs to item images"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL to item details page"
+          }
+        }
+      },
+      "TransactionProof": {
+        "type": "object",
+        "required": [
+          "txid",
+          "issuer",
+          "from",
+          "to",
+          "amount",
+          "currency",
+          "timestamp"
+        ],
+        "properties": {
+          "txid": {
+            "type": "string",
+            "description": "Unique transaction ID from issuer"
+          },
+          "issuer": {
+            "type": "integer",
+            "description": "OCID of service that executed the transfer"
+          },
+          "from": {
+            "type": "object",
+            "required": [
+              "ocid"
+            ],
+            "description": "Sender information",
+            "properties": {
+              "ocid": {
+                "type": "integer",
+                "description": "Sender's OCID"
+              },
+              "reference": {
+                "type": "string",
+                "description": "Sender's transaction reference"
+              }
+            }
+          },
+          "to": {
+            "type": "object",
+            "required": [
+              "ocid"
+            ],
+            "description": "Recipient information",
+            "properties": {
+              "ocid": {
+                "type": "integer",
+                "description": "Recipient's OCID (your merchant OCID)"
+              },
+              "reference": {
+                "type": "string",
+                "description": "Your order ID or transaction reference"
+              }
+            }
+          },
+          "amount": {
+            "type": "string",
+            "description": "Amount as decimal string"
+          },
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217 currency code"
+          },
+          "timestamp": {
+            "type": "integer",
+            "description": "Unix timestamp when transfer completed"
+          },
+          "memo": {
+            "type": "string",
+            "description": "Human-readable description"
+          }
+        }
+      },
+      "TransferWebhookRequest": {
+        "type": "object",
+        "required": [
+          "proof",
+          "signature"
+        ],
+        "properties": {
+          "proof": {
+            "$ref": "#/components/schemas/TransactionProof"
+          },
+          "signature": {
+            "type": "string",
+            "description": "secp256k1 signature of the proof from the issuer"
+          }
+        }
+      },
+      "TransferWebhookResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "txid"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "description": "Whether you accepted the notification"
+          },
+          "txid": {
+            "type": "string",
+            "description": "The transaction ID from the proof"
+          },
+          "message": {
+            "type": "string",
+            "description": "Optional message explaining rejection reason"
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Error code",
+                "enum": [
+                  "INVALID_SIGNATURE",
+                  "TIMESTAMP_EXPIRED",
+                  "NONCE_REUSED",
+                  "UNKNOWN_OCID",
+                  "INVALID_PROOF",
+                  "PROOF_SIGNATURE_INVALID",
+                  "ISSUER_NOT_ACCEPTED",
+                  "ORDER_NOT_FOUND",
+                  "ORDER_EXPIRED"
+                ]
+              },
+              "message": {
+                "type": "string",
+                "description": "Human-readable error message"
+              },
+              "details": {
+                "type": "object",
+                "description": "Additional error context"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,99 @@
+---
+title: "Create Payment"
+description: "Accept payment requests from third-party payment apps"
+openapi: "POST /payment/create"
+---
+
+<Info>
+Third-party payment apps use this endpoint when they don't have a direct reserve account with you. They create a pending payment, then settle via an accepted settlement provider.
+</Info>
+
+## Two-Step Payment Flow
+
+1. **Create payment** - Payment app calls `/payment/create` to create pending payment
+2. **Settle payment** - Payment app settles via `/payment/settle` with a proof from an accepted settlement provider
+
+This enables interoperability between payment apps and merchant gateways that don't have direct relationships.
+
+## Implementation
+
+```javascript
+app.post('/payment/create', verifyAuth, async (req, res) => {
+  const { to, amount, currency, reference, memo, expiresAt, order } = req.body;
+  const callerOcid = parseInt(req.headers['x-oc-id']);
+
+  // 1. Verify merchant is registered
+  const merchant = await db.getMerchantByOcid(to);
+  if (!merchant) {
+    return res.status(400).json({
+      error: { code: 'MERCHANT_NOT_REGISTERED', message: 'Unknown merchant' }
+    });
+  }
+
+  // 2. Create pending payment
+  const txid = generateTxid();
+  const payment = await db.createPayment({
+    txid,
+    callerOcid,
+    merchantOcid: to,
+    amount,
+    currency,
+    reference,
+    memo,
+    status: 'pending_settlement',
+    expiresAt: expiresAt || Math.floor(Date.now() / 1000) + 3600,
+    orderId: order?.id,
+    orderUrls: order?.urls,
+    createdAt: Date.now()
+  });
+
+  // 3. Optionally fetch and store order details
+  if (order?.urls?.length > 0) {
+    fetchAndStoreOrder(payment.id, order.urls);
+  }
+
+  // 4. Return settlement info
+  res.json({
+    status: 'pending_settlement',
+    txid,
+    amount,
+    currency,
+    expiresAt: payment.expiresAt,
+    settlement: {
+      accepts: ACCEPTED_SETTLEMENT_PROVIDERS // e.g., [100, 101, 102]
+    }
+  });
+});
+```
+
+## Settlement Providers
+
+The `settlement.accepts` array tells the payment app which OCIDs you'll accept proofs from:
+
+```json
+{
+  "settlement": {
+    "accepts": [100, 101, 102]
+  }
+}
+```
+
+The payment app must:
+1. Have an account with one of these providers
+2. Execute a transfer to your OCID via that provider
+3. Submit the signed proof to your `/payment/settle` endpoint
+
+## Order Information
+
+If payment is for an order, include order details:
+
+```json
+{
+  "order": {
+    "id": "ord_abc123",
+    "urls": ["https://merchant.example/orders/ord_abc123"]
+  }
+}
+```
+
+You can fetch the signed order from these URLs to validate the amount and merchant.

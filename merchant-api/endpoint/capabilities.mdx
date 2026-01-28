@@ -1,0 +1,39 @@
+---
+title: "Get Capabilities"
+description: "Return partner-specific capabilities and permissions for authenticated callers"
+openapi: "GET /capabilities"
+---
+
+<Info>
+Unlike the public `/metadata.json`, this authenticated endpoint returns capabilities specific to the requesting OCID based on your service preferences or partnership agreements.
+</Info>
+
+## Use Cases
+
+Use this endpoint to provide differentiated access:
+
+- **Preferred partners** - Grant additional capabilities to strategic partners
+- **Restricted access** - Limit certain OCIDs to specific operations
+- **Custom settlement** - Offer different settlement options per partner
+
+## Example Response
+
+```json
+{
+  "ocid": 500,
+  "name": "Coffee Shop",
+  "capabilities": [
+    "orders.create",
+    "orders.status",
+    "transfer.webhook"
+  ],
+  "settlement": {
+    "currencies": ["USD"],
+    "accepts": [100, 101]
+  }
+}
+```
+
+## Authentication
+
+Verify the request signature using the caller's public key from their `/metadata.json` endpoint. See [Request Authentication](/guides/protocol/request-authentication) for details.

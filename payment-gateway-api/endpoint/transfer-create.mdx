@@ -1,0 +1,133 @@
+---
+title: "Create Transfer"
+description: "Process transfer requests to pay merchants"
+openapi: "POST /transfer/create"
+---
+
+<Info>
+Use this endpoint for both internal transfers (your app paying a merchant) and external partner transfers.
+</Info>
+
+## Use Cases
+
+1. **Internal** - Your mobile app requests payment after user scans merchant QR
+2. **External** - Partner gateways with reserve accounts request transfers
+
+## Implementation
+
+```javascript
+app.post('/transfer/create', verifyAuth, async (req, res) => {
+  const { from, to, amount, currency, memo, order } = req.body;
+  const callerOcid = parseInt(req.headers['x-oc-id']);
+
+  // Determine if internal or external
+  if (isInternalRequest(callerOcid, from)) {
+    return handleInternalTransfer(req, res);
+  } else {
+    return handleExternalTransfer(req, res);
+  }
+});
+
+async function handleInternalTransfer(req, res) {
+  const { from, to, amount, currency, memo, order } = req.body;
+
+  // Get user from reference
+  const user = await db.getUserByReference(from.reference);
+  if (!user) {
+    return res.status(400).json({
+      error: { code: 'ACCOUNT_NOT_FOUND', message: 'User not found' }
+    });
+  }
+
+  // Check balance
+  if (user.balance < parseFloat(amount)) {
+    return res.status(402).json({
+      error: { code: 'INSUFFICIENT_FUNDS', message: 'Not enough balance' }
+    });
+  }
+
+  // Process transfer
+  const txid = generateTxid();
+  await db.debitUser(user.id, amount);
+
+  // Create proof
+  const proof = {
+    txid,
+    issuer: YOUR_OCID,
+    from: { ocid: YOUR_OCID, reference: from.reference },
+    to: { ocid: to.ocid, reference: to.reference || order?.id },
+    amount,
+    currency,
+    timestamp: Math.floor(Date.now() / 1000),
+    memo
+  };
+
+  const signature = signProof(proof);
+
+  // Notify merchant
+  await sendMerchantWebhook(to.ocid, proof, signature);
+
+  res.json({ proof, signature });
+}
+```
+
+## Paying After Scanning Merchant QR
+
+When your user scans a merchant's QR code:
+
+```javascript
+async function payMerchantOrder(userId, merchantOrder) {
+  // 1. Verify the order
+  const merchant = await fetchMerchantMetadata(merchantOrder.ocid);
+  if (!verifyOrderSignature(merchantOrder.order, merchantOrder.signature, merchant.config.publicKey)) {
+    throw new Error('Invalid order signature');
+  }
+
+  // 2. Check we can settle
+  const canSettleDirectly = merchantOrder.order.accepts.includes(YOUR_OCID);
+
+  if (canSettleDirectly) {
+    // Direct settlement - we sign the proof
+    return executeDirectTransfer(userId, merchantOrder);
+  }
+
+  // 3. Find a settlement path
+  const settlementPath = await findSettlementPath(merchantOrder.order.accepts);
+
+  if (!settlementPath) {
+    throw new Error('Cannot settle with this merchant');
+  }
+
+  // 4. Execute via settlement path
+  return executeSettlementChain(userId, merchantOrder, settlementPath);
+}
+```
+
+## Settlement Paths
+
+If the merchant doesn't accept your OCID directly, find a common settlement provider:
+
+```javascript
+async function findSettlementPath(merchantAccepts) {
+  // Check if we have a reserve with any accepted provider
+  for (const providerOcid of merchantAccepts) {
+    const reserve = await db.getReserve(providerOcid);
+    if (reserve && reserve.balance > 0) {
+      return { via: providerOcid, type: 'direct_reserve' };
+    }
+  }
+
+  // Check if we can settle via a third party
+  for (const providerOcid of OUR_SETTLEMENT_PARTNERS) {
+    const capabilities = await fetchCapabilities(providerOcid);
+    const common = capabilities.settlement.accepts.filter(
+      ocid => merchantAccepts.includes(ocid)
+    );
+    if (common.length > 0) {
+      return { via: providerOcid, to: common[0], type: 'third_party' };
+    }
+  }
+
+  return null;
+}
+```

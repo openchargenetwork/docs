@@ -1,0 +1,180 @@
+---
+title: "Submit Order to Session"
+description: "Receive orders from merchants when they scan your user's QR code"
+openapi: "POST /orders/create/{sessionId}"
+---
+
+<Info>
+This endpoint receives orders when a merchant scans your user's QR code. The `sessionId` identifies which user will pay.
+</Info>
+
+## Flow
+
+1. User opens your app and requests to pay
+2. You generate a `sessionId` and display a QR code
+3. Merchant scans the QR code
+4. Merchant POSTs their signed order to this endpoint
+5. You validate the order and prompt user for confirmation
+6. User confirms, you process payment
+7. You send proof to merchant's webhook
+
+## Implementation
+
+```javascript
+app.post('/orders/create/:sessionId', verifyMerchantAuth, async (req, res) => {
+  const { sessionId } = req.params;
+  const { order, signature, urls } = req.body;
+  const merchantOcid = parseInt(req.headers['x-oc-id']);
+
+  // 1. Find session
+  const session = await db.getSession(sessionId);
+  if (!session) {
+    return res.status(404).json({
+      error: { code: 'SESSION_NOT_FOUND', message: 'Session not found' }
+    });
+  }
+
+  // 2. Check expiration
+  if (session.expiresAt < Date.now()) {
+    return res.status(404).json({
+      error: { code: 'SESSION_EXPIRED', message: 'Session has expired' }
+    });
+  }
+
+  // 3. Check not already used
+  if (session.status !== 'pending') {
+    return res.status(410).json({
+      error: { code: 'SESSION_USED', message: 'Session already used' }
+    });
+  }
+
+  // 4. Verify merchant signature on order
+  const merchantPublicKey = await getMerchantPublicKey(merchantOcid);
+  if (!verifyOrderSignature(order, signature, merchantPublicKey)) {
+    return res.status(400).json({
+      error: { code: 'INVALID_SIGNATURE', message: 'Invalid order signature' }
+    });
+  }
+
+  // 5. Verify order not expired
+  if (order.expiresAt && order.expiresAt < Date.now() / 1000) {
+    return res.status(400).json({
+      error: { code: 'ORDER_EXPIRED', message: 'Order has expired' }
+    });
+  }
+
+  // 6. Check we can settle
+  if (!canSettle(order.accepts)) {
+    return res.status(400).json({
+      error: { code: 'SETTLEMENT_NOT_SUPPORTED', message: 'Cannot settle with merchant' }
+    });
+  }
+
+  // 7. Invalidate session and store order
+  await db.updateSession(sessionId, {
+    status: 'order_received',
+    order,
+    signature,
+    merchantOcid,
+    urls
+  });
+
+  // 8. Notify user's app (websocket/push)
+  await notifyUser(session.userId, 'payment_request', {
+    merchantOcid,
+    order,
+    sessionId
+  });
+
+  // 9. Return status URL
+  res.json({
+    urls: {
+      status: `https://api.yourwallet.com/orders/${order.id}/status`
+    }
+  });
+});
+```
+
+## Session Management
+
+Generate secure, single-use sessions:
+
+```javascript
+app.post('/app/pay', authenticateUser, async (req, res) => {
+  const user = req.user;
+
+  // Generate session
+  const sessionId = crypto.randomBytes(16).toString('hex');
+
+  await db.createSession({
+    id: sessionId,
+    userId: user.id,
+    status: 'pending',
+    expiresAt: Date.now() + 5 * 60 * 1000 // 5 minutes
+  });
+
+  // Build QR payload
+  const qrPayload = {
+    ocid: YOUR_OCID,
+    order: `https://api.yourwallet.com/opencharge/orders/create/${sessionId}`,
+    expiresAt: Math.floor((Date.now() + 5 * 60 * 1000) / 1000)
+  };
+
+  res.json({
+    sessionId,
+    qrPayload,
+    qrCode: await generateQRCode(JSON.stringify(qrPayload))
+  });
+});
+```
+
+## Processing Payment After User Confirms
+
+```javascript
+app.post('/app/confirm/:sessionId', authenticateUser, async (req, res) => {
+  const { sessionId } = req.params;
+  const user = req.user;
+
+  const session = await db.getSession(sessionId);
+
+  // Verify session belongs to user
+  if (session.userId !== user.id) {
+    return res.status(403).json({ error: 'Not your session' });
+  }
+
+  // Check user has sufficient balance
+  if (user.balance < parseFloat(session.order.amount)) {
+    return res.status(402).json({ error: 'Insufficient funds' });
+  }
+
+  // Process payment
+  await processPayment(session);
+
+  res.json({ success: true });
+});
+
+async function processPayment(session) {
+  // Debit user
+  await db.debitUser(session.userId, session.order.amount);
+
+  // Create proof
+  const proof = {
+    txid: generateTxid(),
+    issuer: YOUR_OCID,
+    from: { ocid: YOUR_OCID, reference: `user_${session.userId}` },
+    to: { ocid: session.order.ocid, reference: session.order.id },
+    amount: session.order.amount,
+    currency: session.order.currency,
+    timestamp: Math.floor(Date.now() / 1000),
+    memo: `Payment for ${session.order.id}`
+  };
+
+  const signature = signProof(proof);
+
+  // Send to merchant webhook
+  await sendMerchantWebhook(session.merchantOcid, proof, signature);
+
+  // Update session
+  await db.updateSession(session.id, { status: 'completed', proof });
+}
+```
