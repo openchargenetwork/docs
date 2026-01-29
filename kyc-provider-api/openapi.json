@@ -1,0 +1,579 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Opencharge KYC Provider API",
+    "description": "API specification for KYC providers integrating with the Opencharge protocol. KYC providers collect and verify user identity information, then share it with authorized OCN entities.",
+    "version": "0.1.0",
+    "license": {
+      "name": "MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://kyc.provider.example/opencharge",
+      "description": "Example KYC provider Opencharge endpoint"
+    }
+  ],
+  "paths": {
+    "/metadata.json": {
+      "get": {
+        "operationId": "getMetadata",
+        "summary": "Get OCID metadata",
+        "description": "Returns your KYC provider's metadata including public key, endpoint URL, and capabilities. Other services fetch this to verify your signatures and discover your capabilities.",
+        "responses": {
+          "200": {
+            "description": "OCID metadata document",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OCIDMetadata" },
+                "example": {
+                  "opencharge": "0.1",
+                  "name": "TrustVerify KYC",
+                  "profile": "Global KYC verification provider",
+                  "icon": "https://kyc.provider.example/icon.png",
+                  "config": {
+                    "publicKey": "a34b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b",
+                    "endpoint": "https://kyc.provider.example/opencharge",
+                    "capabilities": [
+                      "kyc.grant",
+                      "kyc.validate",
+                      "kyc.data"
+                    ]
+                  },
+                  "kyc": [],
+                  "signature": "a1b2c3d4e5f6...7f1b",
+                  "contact": "support@kycprovider.example"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/capabilities": {
+      "get": {
+        "operationId": "getCapabilities",
+        "summary": "Get service capabilities",
+        "description": "Authenticated endpoint for partners to discover their specific capabilities at your KYC provider.",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-OC-ID" },
+          { "$ref": "#/components/parameters/X-OC-Timestamp" },
+          { "$ref": "#/components/parameters/X-OC-Nonce" },
+          { "$ref": "#/components/parameters/X-OC-Signature" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Service capabilities for the authenticated partner",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Capabilities" },
+                "example": {
+                  "ocid": 540,
+                  "name": "TrustVerify KYC",
+                  "capabilities": ["kyc.grant", "kyc.validate", "kyc.data"],
+                  "supported_grants": [
+                    "name",
+                    "email",
+                    "phone",
+                    "date_of_birth",
+                    "nationality",
+                    "address",
+                    "id_card",
+                    "passport",
+                    "driver_license",
+                    "proof_of_address",
+                    "liveness",
+                    "aml"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/kyc/grant/{ocid}": {
+      "get": {
+        "operationId": "grantKycAccess",
+        "summary": "Grant KYC access",
+        "description": "Redirect users to this URL to grant KYC data access to a specific OCID. The user will see a consent UI showing which permissions are being requested. After granting or denying, the user is redirected back to the callback URL.",
+        "parameters": [
+          {
+            "name": "ocid",
+            "in": "path",
+            "required": true,
+            "description": "The OCID requesting KYC access",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "grants",
+            "in": "query",
+            "required": true,
+            "description": "Comma-separated list of permissions requested",
+            "schema": { "type": "string" },
+            "example": "name,email,phone,id_card,liveness"
+          },
+          {
+            "name": "user_ocid",
+            "in": "query",
+            "required": true,
+            "description": "The end user's OCID whose KYC is being requested",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "callback_url",
+            "in": "query",
+            "required": true,
+            "description": "URL to redirect user after grant decision",
+            "schema": { "type": "string", "format": "uri" }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "description": "Opaque state parameter returned in callback",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to KYC consent UI"
+          },
+          "400": {
+            "description": "Invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/kyc/validate": {
+      "post": {
+        "operationId": "validateKyc",
+        "summary": "Validate KYC status",
+        "description": "Check if a user has completed KYC, what permissions they've granted to the requesting OCID, and the verification status of each item.",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-OC-ID" },
+          { "$ref": "#/components/parameters/X-OC-Timestamp" },
+          { "$ref": "#/components/parameters/X-OC-Nonce" },
+          { "$ref": "#/components/parameters/X-OC-Signature" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/KycValidateRequest" },
+              "example": {
+                "user_ocid": 12345,
+                "grants": ["name", "email", "phone", "id_card", "liveness"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "KYC validation result",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/KycValidateResponse" },
+                "example": {
+                  "user_ocid": 12345,
+                  "kyc_complete": true,
+                  "grants": {
+                    "name": "verified",
+                    "email": "verified",
+                    "phone": "verified",
+                    "id_card": "verified",
+                    "liveness": "verified",
+                    "passport": "missing",
+                    "address": "restricted"
+                  },
+                  "verified_at": 1706500000,
+                  "expires_at": 1738036000
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/kyc/data": {
+      "post": {
+        "operationId": "getKycData",
+        "summary": "Get KYC data",
+        "description": "Retrieve the user's KYC data for granted permissions. Returns signed data that can be verified using the KYC provider's public key.",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-OC-ID" },
+          { "$ref": "#/components/parameters/X-OC-Timestamp" },
+          { "$ref": "#/components/parameters/X-OC-Nonce" },
+          { "$ref": "#/components/parameters/X-OC-Signature" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/KycDataRequest" },
+              "example": {
+                "user_ocid": 12345,
+                "grants": ["name", "email", "phone", "id_card", "liveness"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed KYC data",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/KycDataResponse" },
+                "example": {
+                  "user_ocid": 12345,
+                  "data": {
+                    "name": {
+                      "first_name": "John",
+                      "last_name": "Doe",
+                      "full_name": "John Michael Doe"
+                    },
+                    "email": "john.doe@example.com",
+                    "phone": "+1-555-123-4567",
+                    "id_card": {
+                      "type": "national_id",
+                      "number": "XXX-REDACTED",
+                      "country": "US",
+                      "issued_at": "2020-01-15",
+                      "expires_at": "2030-01-15",
+                      "image_url": "https://kyc.provider.example/secure/docs/id_abc123.jpg"
+                    },
+                    "liveness": {
+                      "verified": true,
+                      "selfie_url": "https://kyc.provider.example/secure/docs/selfie_abc123.jpg",
+                      "verified_at": 1706500000
+                    }
+                  },
+                  "issued_at": 1706500500,
+                  "expires_at": 1706504100,
+                  "signature": "a1b2c3d4e5f6..."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "403": {
+            "description": "Access denied - user has not granted permission",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "X-OC-ID": {
+        "name": "X-OC-ID",
+        "in": "header",
+        "required": true,
+        "description": "Caller's OCID",
+        "schema": { "type": "string" },
+        "example": "300"
+      },
+      "X-OC-Timestamp": {
+        "name": "X-OC-Timestamp",
+        "in": "header",
+        "required": true,
+        "description": "Unix timestamp in seconds",
+        "schema": { "type": "string" },
+        "example": "1706500000"
+      },
+      "X-OC-Nonce": {
+        "name": "X-OC-Nonce",
+        "in": "header",
+        "required": true,
+        "description": "Unique request identifier",
+        "schema": { "type": "string" },
+        "example": "req_abc123"
+      },
+      "X-OC-Signature": {
+        "name": "X-OC-Signature",
+        "in": "header",
+        "required": true,
+        "description": "secp256k1 ECDSA signature",
+        "schema": { "type": "string" },
+        "example": "a1b2c3d4...7f1b"
+      }
+    },
+    "schemas": {
+      "OCIDMetadata": {
+        "type": "object",
+        "required": ["opencharge", "name", "config", "signature"],
+        "properties": {
+          "opencharge": { "type": "string" },
+          "name": { "type": "string" },
+          "profile": { "type": "string" },
+          "icon": { "type": "string", "format": "uri" },
+          "config": { "$ref": "#/components/schemas/OCIDConfig" },
+          "kyc": {
+            "type": "array",
+            "items": { "type": "integer" },
+            "description": "Supported auto KYC providers that service accepts"
+          },
+          "signature": { "type": "string" },
+          "contact": { "type": "string" }
+        }
+      },
+      "OCIDConfig": {
+        "type": "object",
+        "required": ["publicKey", "endpoint", "capabilities"],
+        "properties": {
+          "publicKey": { "type": "string", "pattern": "^[a-fA-F0-9]{128}$" },
+          "endpoint": { "type": "string", "format": "uri" },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["kyc.grant", "kyc.validate", "kyc.data"]
+            }
+          }
+        }
+      },
+      "Capabilities": {
+        "type": "object",
+        "required": ["ocid", "name", "capabilities"],
+        "properties": {
+          "ocid": { "type": "integer" },
+          "name": { "type": "string" },
+          "capabilities": { "type": "array", "items": { "type": "string" } },
+          "supported_grants": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "name",
+                "email",
+                "phone",
+                "date_of_birth",
+                "nationality",
+                "address",
+                "id_card",
+                "passport",
+                "driver_license",
+                "proof_of_address",
+                "liveness",
+                "aml"
+              ]
+            },
+            "description": "List of KYC grants this provider supports"
+          }
+        }
+      },
+      "KycValidateRequest": {
+        "type": "object",
+        "required": ["user_ocid"],
+        "properties": {
+          "user_ocid": {
+            "type": "integer",
+            "description": "The end user's OCID"
+          },
+          "grants": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Specific grants to check (optional, returns all if omitted)"
+          }
+        }
+      },
+      "KycValidateResponse": {
+        "type": "object",
+        "required": ["user_ocid", "kyc_complete", "grants"],
+        "properties": {
+          "user_ocid": { "type": "integer" },
+          "kyc_complete": {
+            "type": "boolean",
+            "description": "Whether user has completed basic KYC verification"
+          },
+          "grants": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "enum": ["verified", "pending", "missing", "restricted"]
+            },
+            "description": "Status of each KYC item"
+          },
+          "verified_at": {
+            "type": "integer",
+            "description": "Unix timestamp of last verification"
+          },
+          "expires_at": {
+            "type": "integer",
+            "description": "Unix timestamp when verification expires"
+          }
+        }
+      },
+      "KycDataRequest": {
+        "type": "object",
+        "required": ["user_ocid", "grants"],
+        "properties": {
+          "user_ocid": {
+            "type": "integer",
+            "description": "The end user's OCID"
+          },
+          "grants": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "KYC data fields to retrieve"
+          }
+        }
+      },
+      "KycDataResponse": {
+        "type": "object",
+        "required": ["user_ocid", "data", "issued_at", "signature"],
+        "properties": {
+          "user_ocid": { "type": "integer" },
+          "data": {
+            "type": "object",
+            "description": "KYC data for granted permissions",
+            "properties": {
+              "name": {
+                "type": "object",
+                "properties": {
+                  "first_name": { "type": "string" },
+                  "last_name": { "type": "string" },
+                  "full_name": { "type": "string" }
+                }
+              },
+              "email": { "type": "string", "format": "email" },
+              "phone": { "type": "string" },
+              "date_of_birth": { "type": "string", "format": "date" },
+              "nationality": { "type": "string", "description": "ISO 3166-1 alpha-2 country code" },
+              "address": {
+                "type": "object",
+                "properties": {
+                  "street": { "type": "string" },
+                  "city": { "type": "string" },
+                  "state": { "type": "string" },
+                  "postal_code": { "type": "string" },
+                  "country": { "type": "string" }
+                }
+              },
+              "id_card": { "$ref": "#/components/schemas/DocumentData" },
+              "passport": { "$ref": "#/components/schemas/DocumentData" },
+              "driver_license": { "$ref": "#/components/schemas/DocumentData" },
+              "proof_of_address": { "$ref": "#/components/schemas/DocumentData" },
+              "liveness": {
+                "type": "object",
+                "properties": {
+                  "verified": { "type": "boolean" },
+                  "selfie_url": { "type": "string", "format": "uri" },
+                  "verified_at": { "type": "integer" }
+                }
+              },
+              "aml": {
+                "type": "object",
+                "properties": {
+                  "status": { "type": "string", "enum": ["clear", "flagged", "pending"] },
+                  "checked_at": { "type": "integer" }
+                }
+              }
+            }
+          },
+          "issued_at": {
+            "type": "integer",
+            "description": "Unix timestamp when this data was issued"
+          },
+          "expires_at": {
+            "type": "integer",
+            "description": "Unix timestamp when this data expires"
+          },
+          "signature": {
+            "type": "string",
+            "description": "KYC provider's signature of the data object"
+          }
+        }
+      },
+      "DocumentData": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "description": "Document type (national_id, passport, etc.)" },
+          "number": { "type": "string", "description": "Document number (may be partially redacted)" },
+          "country": { "type": "string", "description": "Issuing country (ISO 3166-1 alpha-2)" },
+          "issued_at": { "type": "string", "format": "date" },
+          "expires_at": { "type": "string", "format": "date" },
+          "image_url": { "type": "string", "format": "uri", "description": "Secure URL to document image" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "INVALID_SIGNATURE",
+                  "TIMESTAMP_EXPIRED",
+                  "NONCE_REUSED",
+                  "UNKNOWN_OCID",
+                  "USER_NOT_FOUND",
+                  "KYC_NOT_COMPLETE",
+                  "GRANT_NOT_AUTHORIZED",
+                  "GRANT_EXPIRED",
+                  "INVALID_GRANT",
+                  "INVALID_CALLBACK_URL"
+                ]
+              },
+              "message": { "type": "string" },
+              "details": { "type": "object" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

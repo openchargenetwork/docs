@@ -1,7 +1,7 @@
 ---
 title: "Get Metadata"
 description: "Return your gateway's public metadata for service discovery"
-openapi: "merchant-gateway-api/openapi.json GET /metadata.json"
+openapi: "payment-gateway-api/openapi.json GET /metadata.json"
 ---
 
 <Info>
@@ -23,19 +23,17 @@ Host this endpoint at the URL you register in the Router Registry. The response 
 ```json
 {
   "opencharge": "0.1",
-  "name": "Payment Gateway",
-  "profile": "Multi-currency payment gateway for Opencharge merchants",
-  "icon": "https://gateway.example/icon.png",
+  "name": "QuickPay Wallet",
+  "profile": "Mobile wallet for fast payments",
+  "icon": "https://wallet.example/icon.png",
   "config": {
     "publicKey": "a34b5c6d7e8f9a0b...",
-    "endpoint": "https://pay.yourgateway.com/opencharge",
+    "endpoint": "https://api.wallet.example/opencharge",
     "capabilities": [
-      "orders.checkout",
+      "checkout.create",
+      "orders.create.session",
       "transfer.create",
-      "transfer.webhook",
-      "payment.create",
-      "payment.settle",
-      "verify.txid"
+      "transfer.webhook"
     ],
     "settlement": {
       "currencies": ["USD", "EUR"],
@@ -44,7 +42,7 @@ Host this endpoint at the URL you register in the Router Registry. The response 
   },
   "kyc": [540, 737, 2836],
   "signature": "a1b2c3d4e5f6...7f1b",
-  "contact": "support@gateway.example"
+  "contact": "dev@wallet.example"
 }
 ```
 
@@ -68,14 +66,12 @@ Sign the `config` object to prove you control the private key:
 ```javascript
 const config = {
   publicKey: YOUR_PUBLIC_KEY,
-  endpoint: "https://pay.yourgateway.com/opencharge",
+  endpoint: "https://api.wallet.example/opencharge",
   capabilities: [
-    "orders.checkout",
+    "checkout.create",
+    "orders.create.session",
     "transfer.create",
-    "transfer.webhook",
-    "payment.create",
-    "payment.settle",
-    "verify.txid"
+    "transfer.webhook"
   ],
   settlement: {
     currencies: ["USD", "EUR"],

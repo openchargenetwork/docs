@@ -1,0 +1,47 @@
+---
+title: "Get Capabilities"
+description: "Return partner-specific capabilities for authenticated callers"
+openapi: "payment-gateway-api/openapi.json GET /capabilities"
+---
+
+<Info>
+Unlike `/metadata.json`, this endpoint is authenticated. Return capabilities specific to the requesting partner based on their partnership agreement.
+</Info>
+
+## Implementation
+
+```javascript
+app.get('/capabilities', verifyAuth, async (req, res) => {
+  const partnerOcid = req.headers['x-oc-id'];
+
+  // Get partner-specific settings
+  const partner = await db.getPartner(partnerOcid);
+
+  if (!partner) {
+    return res.status(401).json({
+      error: { code: 'UNKNOWN_OCID', message: 'Unknown partner' }
+    });
+  }
+
+  res.json({
+    ocid: YOUR_OCID,
+    name: "QuickPay Wallet",
+    capabilities: partner.enabledCapabilities || [
+      "checkout.create",
+      "orders.create.session",
+      "transfer.create",
+      "transfer.webhook"
+    ],
+    settlement: {
+      currencies: partner.currencies || ["USD"],
+      accepts: partner.acceptedSettlers || [100, 101]
+    }
+  });
+});
+```
+
+## Use Cases
+
+- Return different settlement options based on partner tier
+- Enable/disable specific capabilities per partner
+- Show different currencies based on partner location

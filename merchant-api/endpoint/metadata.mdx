@@ -1,7 +1,7 @@
 ---
 title: "Get Metadata"
 description: "Return your service's public metadata including public key, endpoint URL, and capabilities"
-openapi: "GET /metadata.json"
+openapi: "merchant-api/openapi.json GET /metadata.json"
 ---
 
 <Info>
@@ -16,6 +16,7 @@ Host this endpoint at the URL you register in the Router Registry smart contract
 - **Your endpoint URL** - Where to send API requests
 - **Your capabilities** - Which endpoints you support
 - **Settlement preferences** - Which currencies and settlement providers you accept
+- **KYC providers** - Supported auto KYC providers that service accepts
 
 ## Example Response
 
@@ -23,7 +24,7 @@ Host this endpoint at the URL you register in the Router Registry smart contract
 {
   "opencharge": "0.1",
   "name": "Coffee Shop",
-  "description": "Local coffee shop accepting Opencharge payments",
+  "profile": "Local coffee shop accepting Opencharge payments",
   "icon": "https://merchant.example/icon.png",
   "config": {
     "publicKey": "a34b5c6d7e8f9a0b...",
@@ -38,6 +39,7 @@ Host this endpoint at the URL you register in the Router Registry smart contract
       "accepts": [100, 101, 102]
     }
   },
+  "kyc": [540, 737, 2836]
   "signature": "a1b2c3d4e5f6...7f1b",
   "contact": "support@merchant.example"
 }

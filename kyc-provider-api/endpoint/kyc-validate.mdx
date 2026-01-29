@@ -1,0 +1,110 @@
+---
+title: "Validate KYC"
+description: "Check a user's KYC status and granted permissions"
+openapi: "kyc-provider-api/openapi.json POST /kyc/validate"
+---
+
+<Info>
+Use this endpoint to check if a user has completed KYC and what permissions they've granted to your OCID.
+</Info>
+
+## Use Cases
+
+- Check if a user has verified their identity before processing a transaction
+- Determine which KYC data you can request via `/kyc/data`
+- Verify the user has granted your OCID access to specific data
+
+## Verification Statuses
+
+Each KYC item returns one of these statuses:
+
+| Status | Meaning |
+|--------|---------|
+| `verified` | User provided this and KYC provider verified it |
+| `pending` | User provided this but verification is in progress |
+| `missing` | User has not provided this information |
+| `restricted` | User explicitly denied permission for this item |
+
+## Implementation
+
+```javascript
+app.post('/kyc/validate', verifyAuth, async (req, res) => {
+  const requestingOcid = req.headers['x-oc-id'];
+  const { user_ocid, grants } = req.body;
+
+  // Get user's KYC record
+  const userKyc = await db.getUserKyc(user_ocid);
+  if (!userKyc) {
+    return res.status(404).json({
+      error: { code: 'USER_NOT_FOUND', message: 'User not found' }
+    });
+  }
+
+  // Get grants for this requesting OCID
+  const userGrants = await db.getKycGrants(user_ocid, requestingOcid);
+
+  // Build status for each requested grant
+  const grantStatus = {};
+  const checkGrants = grants || Object.keys(userKyc.items);
+
+  for (const grant of checkGrants) {
+    if (userGrants.denied?.includes(grant)) {
+      grantStatus[grant] = 'restricted';
+    } else if (!userKyc.items[grant]) {
+      grantStatus[grant] = 'missing';
+    } else if (userKyc.items[grant].status === 'pending') {
+      grantStatus[grant] = 'pending';
+    } else if (userGrants.granted?.includes(grant)) {
+      grantStatus[grant] = 'verified';
+    } else {
+      grantStatus[grant] = 'missing'; // Not granted to this OCID
+    }
+  }
+
+  res.json({
+    user_ocid,
+    kyc_complete: userKyc.basic_verified,
+    grants: grantStatus,
+    verified_at: userKyc.verified_at,
+    expires_at: userKyc.expires_at
+  });
+});
+```
+
+## Example: Check Before Transaction
+
+```javascript
+async function checkUserKyc(kycProviderOcid, userOcid, requiredGrants) {
+  const response = await fetch(`${kycProviderEndpoint}/kyc/validate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-OC-ID': MY_OCID,
+      'X-OC-Timestamp': timestamp,
+      'X-OC-Nonce': nonce,
+      'X-OC-Signature': signature
+    },
+    body: JSON.stringify({
+      user_ocid: userOcid,
+      grants: requiredGrants
+    })
+  });
+
+  const result = await response.json();
+
+  // Check if all required grants are verified
+  const allVerified = requiredGrants.every(
+    grant => result.grants[grant] === 'verified'
+  );
+
+  if (!allVerified) {
+    // Redirect user to grant page for missing/restricted items
+    const missingGrants = requiredGrants.filter(
+      grant => result.grants[grant] !== 'verified'
+    );
+    return { verified: false, missing: missingGrants };
+  }
+
+  return { verified: true };
+}
+```

@@ -5,105 +5,52 @@ description: "Complete example of a cross-platform payment using Opencharge sett
 
 ## Complete Example: PayPal → MTN MOMO
 
+```mermaid
+sequenceDiagram
+    participant PayPal
+    participant MTN as MTN MOMO
+    participant Barclays
+    participant Merchant
+
+    Note over PayPal,Merchant: PayPal user wants to pay MTN MOMO merchant 10,000 UGX
+
+    rect rgb(240, 248, 255)
+    Note over PayPal,MTN: Step 1: Discover settlement preferences
+    PayPal->>MTN: GET /capabilities
+    MTN-->>PayPal: { settlement.accepts: [100, 101] }
+    Note over PayPal: "I have reserves at Barclays (OCID 100). Perfect."
+    end
+
+    rect rgb(255, 248, 240)
+    Note over PayPal,MTN: Step 2: Initiate payment request
+    PayPal->>MTN: POST /payment/create<br/>{to: 500, amount: "10000.00", currency: "UGX"}
+    Note over MTN: Maps OCID 500 → merchant phone number
+    MTN-->>PayPal: { status: "pending_settlement", txid: "momo_tx_789" }
+    end
+
+    rect rgb(240, 255, 240)
+    Note over PayPal,Barclays: Step 3: Instruct Barclays to pay MTN
+    PayPal->>Barclays: POST /transfer<br/>{to: {ocid: 300, reference: "momo_tx_789"}}
+    Note over Barclays: Debits PayPal, credits MTN's account
+    Barclays-->>PayPal: { status: "completed", proof: {...}, signature: "abc123..." }
+    end
+
+    rect rgb(255, 240, 255)
+    Note over PayPal,MTN: Step 4: Submit proof to MTN
+    PayPal->>MTN: POST /payment/settle<br/>{txid: "momo_tx_789", proof: {...}}
+    Note over MTN: ✓ Signature valid<br/>✓ Issuer trusted<br/>✓ Amount matches
+    MTN->>Merchant: Credits merchant account
+    MTN-->>PayPal: { status: "completed", proof: {...}, signature: "def456..." }
+    end
+
+    Note over PayPal,Merchant: Done! Merchant receives funds.
 ```
-┌─────────────────────────────────────┐
- │  PayPal user wants to pay MTN MOMO merchant 10,000 UGX  │
-└─────────────────────────────────────┘
 
-STEP 1: PayPal discovers MTN's settlement preferences
-═══════════════════════════════════════
+**What each party holds:**
 
-    PayPal                                              MTN MOMO
-       │                                                    │
-       │  GET /capabilities                                 │
-       │ ───────────────────────────────►│
-       │                                                    │
-       │  { settlement.accepts: [100, 101] }                │
-       │◄────────────────────────────────────────────────── │
-       │                                                    │
-
-    PayPal thinks: "I have reserves at Barclays (OCID 100). Perfect."
-
-
-STEP 2: PayPal initiates payment request
-════════════════════════════════════════
-
-    PayPal                                              MTN MOMO
-       │                                                    │
-       │  POST /payment/create                              │
-       │  { to: 500,                                        │
-       │    amount: "10000.00", currency: "UGX" }           │
-       │ ─────────────────── ───────────►│
-       │                                                    │
-       │           [MTN looks up OCID 500 internally        │
-       │            → maps to merchant phone number]       │
-       │                                                    │
-       │  { status: "pending_settlement",                   │
-       │    txid: "momo_tx_789",                            │
-       │    settlement.accepts: [100, 101] }                │
-       │◄──────────────────────── ────── │
-       │                                                    │
-
-    MTN has created a pending transaction. Now waiting for settlement.
-    (OCID 500 is the merchant - MTN maps this to their phone number internally)
-
-
-STEP 3: PayPal instructs Barclays to pay MTN
-════════════════════════════════════════════
-
-    PayPal                                              Barclays
-       │                                                    │
-       │  POST /transfer                                    │
-       │  { from: { reference: "paypal_tx_123" },           │
-       │    to: { ocid: 300, reference: "momo_tx_789" },    │
-       │    amount: "10000.00", currency: "UGX" }           │
-       │ ─────────────────────── ───────►│
-       │                                                    │
-       │                        [Barclays debits PayPal,    │
-       │                         credits MTN's account]     │
-       │                                                    │
-       │  { status: "completed",                            │
-       │    proof: { txid: "barclays_tx_456", ... },        │
-       │    signature: "abc123..." }                        │
-       │◄─────────────────────────────── │
-       │                                                    │
-
-    PayPal now has cryptographic proof that Barclays paid MTN.
-
-
-STEP 4: PayPal submits proof to MTN
-═══════════════════════════════════
-
-    PayPal                                              MTN MOMO
-       │                                                    │
-       │  POST /payment/settle                              │
-       │  { txid: "momo_tx_789",                            │
-       │    proof: { txid: "barclays_tx_456", ... },        │
-       │    signature: "abc123..." }                        │
-       │  ──────────────────────────────►│
-       │                                                    │
-       │                        [MTN verifies:              │
-       │                         ✓ Signature valid          │
-       │                         ✓ Issuer (100) is trusted  │
-       │                         ✓ Amount matches           │
-       │                         ✓ We are the recipient]    │
-       │                                                    │
-       │                        [MTN credits merchant]      │
-       │                                                    │
-       │  { status: "completed",                            │
-       │    proof: { txid: "momo_tx_789", ... },            │
-       │    signature: "def456..." }                        │
-       │◄───────────────────────────────│
-       │                                                    │
-
-    Done! PayPal stores MTN's proof. Merchant receives funds.
-
-
-WHAT EACH PARTY HOLDS:
-══════════════════════
-
-    PayPal:   Barclays proof (sent to MTN) + MTN proof (confirmation)
-    MTN:      Barclays proof (internal audit) + own proof (issued to merchant)
-    Merchant: MTN proof (confirmation of receipt)
-    Barclays: Internal records + proof issued to PayPal
-```
+| Party | Proofs Held |
+|-------|-------------|
+| PayPal | Barclays proof (sent to MTN) + MTN proof (confirmation) |
+| MTN | Barclays proof (internal audit) + own proof (issued to merchant) |
+| Merchant | MTN proof (confirmation of receipt) |
+| Barclays | Internal records + proof issued to PayPal |

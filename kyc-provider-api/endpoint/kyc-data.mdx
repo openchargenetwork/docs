@@ -1,0 +1,183 @@
+---
+title: "Get KYC Data"
+description: "Retrieve signed KYC data for granted permissions"
+openapi: "kyc-provider-api/openapi.json POST /kyc/data"
+---
+
+<Info>
+This endpoint returns the user's actual KYC data. Only call this after verifying grants via `/kyc/validate`.
+</Info>
+
+## Response Signing
+
+All KYC data responses must be signed by your private key. Recipients verify the signature using your public key from `/metadata.json`. This proves:
+
+- The data came from your KYC provider
+- The data hasn't been tampered with
+- You attested to the verification at the specified time
+
+## Data Structure
+
+The `data` object contains fields based on the requested grants:
+
+### Identity Fields
+
+```json
+{
+  "name": {
+    "first_name": "John",
+    "last_name": "Doe",
+    "full_name": "John Michael Doe"
+  },
+  "email": "john.doe@example.com",
+  "phone": "+1-555-123-4567",
+  "date_of_birth": "1990-05-15",
+  "nationality": "US",
+  "address": {
+    "street": "123 Main Street",
+    "city": "San Francisco",
+    "state": "CA",
+    "postal_code": "94102",
+    "country": "US"
+  }
+}
+```
+
+### Document Fields
+
+```json
+{
+  "id_card": {
+    "type": "national_id",
+    "number": "XXX-XX-1234",
+    "country": "US",
+    "issued_at": "2020-01-15",
+    "expires_at": "2030-01-15",
+    "image_url": "https://kyc.provider.example/secure/docs/id_abc123.jpg"
+  },
+  "passport": {
+    "type": "passport",
+    "number": "XXXXXXXXX",
+    "country": "US",
+    "issued_at": "2019-06-01",
+    "expires_at": "2029-06-01",
+    "image_url": "https://kyc.provider.example/secure/docs/passport_abc123.jpg"
+  }
+}
+```
+
+### Verification Fields
+
+```json
+{
+  "liveness": {
+    "verified": true,
+    "selfie_url": "https://kyc.provider.example/secure/docs/selfie_abc123.jpg",
+    "verified_at": 1706500000
+  },
+  "aml": {
+    "status": "clear",
+    "checked_at": 1706500000
+  }
+}
+```
+
+## Implementation
+
+```javascript
+app.post('/kyc/data', verifyAuth, async (req, res) => {
+  const requestingOcid = req.headers['x-oc-id'];
+  const { user_ocid, grants } = req.body;
+
+  // Verify user exists
+  const userKyc = await db.getUserKyc(user_ocid);
+  if (!userKyc) {
+    return res.status(404).json({
+      error: { code: 'USER_NOT_FOUND', message: 'User not found' }
+    });
+  }
+
+  // Verify grants for this OCID
+  const userGrants = await db.getKycGrants(user_ocid, requestingOcid);
+
+  // Check all requested grants are authorized
+  for (const grant of grants) {
+    if (!userGrants.granted?.includes(grant)) {
+      return res.status(403).json({
+        error: {
+          code: 'GRANT_NOT_AUTHORIZED',
+          message: `Grant '${grant}' not authorized`,
+          details: { grant }
+        }
+      });
+    }
+  }
+
+  // Build response data
+  const data = {};
+  for (const grant of grants) {
+    data[grant] = userKyc.items[grant].value;
+
+    // Generate secure URLs for documents
+    if (data[grant]?.image_url) {
+      data[grant].image_url = await generateSecureUrl(
+        data[grant].image_url,
+        { expires_in: 3600 } // 1 hour
+      );
+    }
+  }
+
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const expiresAt = issuedAt + 3600; // Data valid for 1 hour
+
+  // Sign the data
+  const dataToSign = { user_ocid, data, issued_at: issuedAt, expires_at: expiresAt };
+  const canonical = JSON.stringify(dataToSign, Object.keys(dataToSign).sort());
+  const signature = secp256k1_sign(PRIVATE_KEY, SHA256(canonical));
+
+  res.json({
+    user_ocid,
+    data,
+    issued_at: issuedAt,
+    expires_at: expiresAt,
+    signature
+  });
+});
+```
+
+## Verifying the Signature
+
+Recipients should verify the KYC data signature:
+
+```javascript
+async function verifyKycData(kycProviderOcid, kycDataResponse) {
+  // Fetch KYC provider's public key
+  const metadata = await fetchOcidMetadata(kycProviderOcid);
+  const publicKey = metadata.config.publicKey;
+
+  // Reconstruct signed data
+  const { signature, ...dataToVerify } = kycDataResponse;
+  const canonical = JSON.stringify(dataToVerify, Object.keys(dataToVerify).sort());
+
+  // Verify signature
+  const isValid = secp256k1_verify(publicKey, SHA256(canonical), signature);
+
+  if (!isValid) {
+    throw new Error('Invalid KYC data signature');
+  }
+
+  // Check expiration
+  if (kycDataResponse.expires_at < Math.floor(Date.now() / 1000)) {
+    throw new Error('KYC data has expired');
+  }
+
+  return kycDataResponse.data;
+}
+```
+
+## Security Considerations
+
+- Document image URLs are time-limited and should expire within 1 hour
+- Sensitive fields like full ID numbers may be partially redacted
+- Cache KYC data responses only until `expires_at`
+- Always verify signatures before trusting the data

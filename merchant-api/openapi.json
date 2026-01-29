@@ -31,7 +31,7 @@
                 "example": {
                   "opencharge": "0.1",
                   "name": "Coffee Shop",
-                  "description": "Local coffee shop accepting Opencharge payments",
+                  "profile": "Local coffee shop accepting Opencharge payments",
                   "icon": "https://merchant.example/icon.png",
                   "config": {
                     "publicKey": "a34b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b",
@@ -46,6 +46,7 @@
                       "accepts": [100, 101, 102]
                     }
                   },
+                  "kyc": [540, 737, 2836],
                   "signature": "a1b2c3d4e5f6...7f1b",
                   "contact": "support@merchant.example"
                 }
@@ -476,9 +477,9 @@
             "description": "Human-readable service name",
             "example": "Coffee Shop"
           },
-          "description": {
+          "profile": {
             "type": "string",
-            "description": "Service description"
+            "description": "Service profile description"
           },
           "icon": {
             "type": "string",
@@ -487,6 +488,13 @@
           },
           "config": {
             "$ref": "#/components/schemas/OCIDConfig"
+          },
+          "kyc": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "Supported auto KYC providers that service accepts"
           },
           "signature": {
             "type": "string",

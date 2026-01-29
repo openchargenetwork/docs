@@ -21,33 +21,19 @@ In all cases, payment is confirmed via the [transfer webhook](/merchant-api/endp
 
 For web-based checkout, redirect customers to a merchant gateway's hosted payment page.
 
-```
-┌──────────┐      ┌──────────┐      ┌──────────────────┐
-│ Customer │      │   You    │      │ Merchant Gateway │
-│ Browser  │      │ Backend  │      │  (Payment Page)  │
-└────┬─────┘      └────┬─────┘      └────────┬─────────┘
-     │                 │                     │
-     │ 1. Checkout     │                     │
-     │────────────────>│                     │
-     │                 │                     │
-     │                 │ 2. POST /orders/    │
-     │                 │    checkout         │
-     │                 │────────────────────>│
-     │                 │                     │
-     │                 │ 3. redirect_url     │
-     │                 │<────────────────────│
-     │                 │                     │
-     │ 4. Redirect     │                     │
-     │<────────────────│                     │
-     │                 │                     │
-     │ 5. Complete payment                   │
-     │──────────────────────────────────────>│
-     │                 │                     │
-     │                 │ 6. Webhook (proof)  │
-     │                 │<────────────────────│
-     │                 │                     │
-     │ 7. Return to site                     │
-     │<──────────────────────────────────────│
+```mermaid
+sequenceDiagram
+    participant C as Customer Browser
+    participant Y as You (Backend)
+    participant MG as Merchant Gateway (Payment Page)
+
+    C->>Y: 1. Checkout
+    Y->>MG: 2. POST /orders/checkout
+    MG-->>Y: 3. redirect_url
+    Y-->>C: 4. Redirect
+    C->>MG: 5. Complete payment
+    MG->>Y: 6. Webhook (proof)
+    MG-->>C: 7. Return to site
 ```
 
 ### Implementation
@@ -111,34 +97,20 @@ Never rely on the customer returning to your site as payment confirmation. Alway
 
 For in-person payments, display a QR code that payment apps scan. This works for retail POS, market stalls, or any face-to-face transaction.
 
-```
-┌──────────┐      ┌──────────┐      ┌─────────────┐
-│ Customer │      │   You    │      │ Payment App │
-│          │      │  (POS)   │      │  (Wallet)   │
-└────┬─────┘      └────┬─────┘      └──────┬──────┘
-     │                 │                   │
-     │ 1. Ready to pay │                   │
-     │────────────────>│                   │
-     │                 │                   │
-     │ 2. Display QR   │                   │
-     │<────────────────│                   │
-     │                 │                   │
-     │ 3. Scan QR      │                   │
-     │─────────────────────────────────────>
-     │                 │                   │
-     │                 │ 4. GET order URL  │
-     │                 │<──────────────────│
-     │                 │                   │
-     │                 │ 5. Signed order   │
-     │                 │──────────────────>│
-     │                 │                   │
-     │                 │ 6. Process payment│
-     │                 │                   │
-     │                 │ 7. Webhook (proof)│
-     │                 │<──────────────────│
-     │                 │                   │
-     │ 8. Confirmation │                   │
-     │<────────────────│                   │
+```mermaid
+sequenceDiagram
+    participant C as Customer
+    participant Y as You (POS)
+    participant PA as Payment App (Wallet)
+
+    C->>Y: 1. Ready to pay
+    Y-->>C: 2. Display QR
+    C->>PA: 3. Scan QR
+    PA->>Y: 4. GET order URL
+    Y-->>PA: 5. Signed order
+    Note over PA: 6. Process payment
+    PA->>Y: 7. Webhook (proof)
+    Y-->>C: 8. Confirmation
 ```
 
 ### QR Code Format
@@ -224,32 +196,19 @@ app.get('/orders/:orderId', async (req, res) => {
 
 Alternatively, if you have a barcode scanner (common in retail), you can scan a QR code displayed by the customer's payment app.
 
-```
-┌──────────┐      ┌─────────────┐      ┌──────────┐
-│ Customer │      │ Payment App │      │   You    │
-│          │      │  (Wallet)   │      │  (POS)   │
-└────┬─────┘      └──────┬──────┘      └────┬─────┘
-     │                   │                  │
-     │ 1. Open wallet    │                  │
-     │──────────────────>│                  │
-     │                   │                  │
-     │ 2. Display QR     │                  │
-     │<──────────────────│                  │
-     │                   │                  │
-     │                   │ 3. Scan QR       │
-     │                   │<─────────────────│
-     │                   │                  │
-     │                   │ 4. POST order    │
-     │                   │<─────────────────│
-     │                   │                  │
-     │ 5. Approve        │                  │
-     │<──────────────────│                  │
-     │                   │                  │
-     │ 6. Confirm        │                  │
-     │──────────────────>│                  │
-     │                   │                  │
-     │                   │ 7. Webhook       │
-     │                   │─────────────────>│
+```mermaid
+sequenceDiagram
+    participant C as Customer
+    participant PA as Payment App (Wallet)
+    participant Y as You (POS)
+
+    C->>PA: 1. Open wallet
+    PA-->>C: 2. Display QR
+    Y->>PA: 3. Scan QR
+    Y->>PA: 4. POST order
+    PA-->>C: 5. Approve
+    C->>PA: 6. Confirm
+    PA->>Y: 7. Webhook
 ```
 
 When you scan the customer's QR, you receive a session URL:

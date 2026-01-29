@@ -11,7 +11,8 @@
   "openapi": [
     "merchant-api/openapi.json",
     "merchant-gateway-api/openapi.json",
-    "payment-gateway-api/openapi.json"
+    "payment-gateway-api/openapi.json",
+    "kyc-provider-api/openapi.json"
   ],
   "navigation": {
     "tabs": [
@@ -87,12 +88,15 @@
             "group": "Guides",
             "pages": [
               "payment-gateway-api/payment-flows",
-              "payment-gateway-api/settlement"
+              "payment-gateway-api/settlement",
+              "payment-gateway-api/end-user-ocids"
             ]
           },
           {
             "group": "Endpoints",
             "pages": [
+              "payment-gateway-api/endpoint/metadata",
+              "payment-gateway-api/endpoint/capabilities",
               "payment-gateway-api/endpoint/checkout-create",
               "payment-gateway-api/endpoint/orders-create-session",
               "payment-gateway-api/endpoint/transfer-create"
@@ -125,6 +129,27 @@
               "merchant-api/endpoint/order-status",
               "merchant-api/endpoint/inventory",
               "merchant-api/endpoint/transfer-webhook"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "KYC Provider API",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "kyc-provider-api/introduction"
+            ]
+          },
+          {
+            "group": "Endpoints",
+            "pages": [
+              "kyc-provider-api/endpoint/metadata",
+              "kyc-provider-api/endpoint/capabilities",
+              "kyc-provider-api/endpoint/kyc-grant",
+              "kyc-provider-api/endpoint/kyc-validate",
+              "kyc-provider-api/endpoint/kyc-data"
             ]
           }
         ]

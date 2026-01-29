@@ -49,106 +49,62 @@ https://api.yourwallet.com/opencharge
 
 Merchant Gateway sends an order to you. End user is redirected to your checkout page to complete payment.
 
-```
-┌──────────┐   ┌──────────┐   ┌─────────────────┐   ┌──────────────┐
-│ Customer │   │ Merchant │   │ Merchant Gateway│   │ Your Gateway │
-└────┬─────┘   └────┬─────┘   └───────┬─────────┘   └──────┬───────┘
-     │              │                 │                    │
-     │ 1. Checkout  │                 │                    │
-     │─────────────>│                 │                    │
-     │              │                 │                    │
-     │              │ 2. POST /orders/│                    │
-     │              │    checkout     │                    │
-     │              │────────────────>│                    │
-     │              │                 │                    │
-     │              │                 │ 3. Forward order   │
-     │              │                 │───────────────────>│
-     │              │                 │                    │
-     │              │                 │ 4. checkout_url    │
-     │              │                 │<───────────────────│
-     │              │                 │                    │
-     │              │ 5. redirect_url │                    │
-     │              │<────────────────│                    │
-     │              │                 │                    │
-     │ 6. Redirect  │                 │                    │
-     │<─────────────│                 │                    │
-     │              │                 │                    │
-     │ 7. Select payment method & pay                      │
-     │────────────────────────────────────────────────────>│
-     │              │                 │                    │
-     │              │                 │ 8. Webhook (proof) │
-     │              │                 │<───────────────────│
-     │              │                 │                    │
-     │              │ 9. Webhook      │                    │
-     │              │<────────────────│                    │
-     │              │                 │                    │
-     │ 10. Redirect to success URL    │                    │
-     │<────────────────────────────────────────────────────│
+```mermaid
+sequenceDiagram
+    participant C as Customer
+    participant M as Merchant
+    participant MG as Merchant Gateway
+    participant YG as Your Gateway
+
+    C->>M: 1. Checkout
+    M->>MG: 2. POST /orders/checkout
+    MG->>YG: 3. Forward order
+    YG-->>MG: 4. checkout_url
+    MG-->>M: 5. redirect_url
+    M-->>C: 6. Redirect
+    C->>YG: 7. Select payment method & pay
+    YG->>MG: 8. Webhook (proof)
+    MG->>M: 9. Webhook
+    YG-->>C: 10. Redirect to success URL
 ```
 
 ### 3. Customer Displays QR (Merchant Scans)
 
 Your app generates a QR code for the user. Merchant scans it to request payment.
 
-```
-┌──────────┐      ┌───────────┐      ┌──────────┐
-│   User   │      │ Your App  │      │ Merchant │
-└────┬─────┘      └─────┬─────┘      └────┬─────┘
-     │                  │                 │
-     │ 1. Open app      │                 │
-     │─────────────────>│                 │
-     │                  │                 │
-     │ 2. Display QR    │                 │
-     │<─────────────────│                 │
-     │                  │                 │
-     │                  │ 3. Scan QR      │
-     │                  │<────────────────│
-     │                  │                 │
-     │                  │ 4. POST order   │
-     │                  │<────────────────│
-     │                  │                 │
-     │ 5. Approve?      │                 │
-     │<─────────────────│                 │
-     │                  │                 │
-     │ 6. Confirm       │                 │
-     │─────────────────>│                 │
-     │                  │                 │
-     │                  │ 7. Process      │
-     │                  │    payment      │
-     │                  │                 │
-     │                  │ 8. Webhook      │
-     │                  │────────────────>│
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant YA as Your App
+    participant M as Merchant
+
+    U->>YA: 1. Open app
+    YA-->>U: 2. Display QR
+    M->>YA: 3. Scan QR
+    M->>YA: 4. POST order
+    YA-->>U: 5. Approve?
+    U->>YA: 6. Confirm
+    Note over YA: 7. Process payment
+    YA->>M: 8. Webhook
 ```
 
 ### 4. Merchant Displays QR (Customer Scans)
 
 Merchant displays a QR code with order info. Customer scans and pays.
 
-```
-┌──────────┐      ┌───────────┐      ┌──────────┐
-│   User   │      │ Your App  │      │ Merchant │
-└────┬─────┘      └─────┬─────┘      └────┬─────┘
-     │                  │                 │
-     │                  │ 1. Display QR   │
-     │                  │<────────────────│
-     │                  │                 │
-     │ 2. Scan QR       │                 │
-     │─────────────────>│                 │
-     │                  │                 │
-     │                  │ 3. Fetch order  │
-     │                  │────────────────>│
-     │                  │                 │
-     │ 4. Confirm       │                 │
-     │<─────────────────│                 │
-     │                  │                 │
-     │ 5. Pay           │                 │
-     │─────────────────>│                 │
-     │                  │                 │
-     │                  │ 6. Process      │
-     │                  │    payment      │
-     │                  │                 │
-     │                  │ 7. Webhook      │
-     │                  │────────────────>│
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant YA as Your App
+    participant M as Merchant
+
+    M->>YA: 1. Display QR
+    U->>YA: 2. Scan QR
+    YA->>M: 3. Fetch order
+    YA-->>U: 4. Confirm
+    U->>YA: 5. Pay
+    Note over YA: 6. Process payment
+    YA->>M: 7. Webhook
 ```
 
 ## QR Code Format

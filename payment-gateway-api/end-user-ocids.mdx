@@ -1,0 +1,568 @@
+---
+title: "End User OCIDs"
+description: "Enable cross-wallet transfers, payouts, KYC sharing, and balance refills for your users through OCIDs"
+---
+
+While end users are not required to have an OCID to use your payment gateway, onboarding end users with OCIDs unlocks powerful cross-network capabilities.
+
+## Why Onboard end users with OCIDs
+
+| Capability | Benefit |
+|------------|---------|
+| Cross-wallet transfers | Users send/receive funds across different payment gateways without sharing personal info |
+| QrCode Contacts | Simple ways |
+| Marketplace payouts | Users receive earnings from OCN marketplaces directly |
+| Shared KYC | Users verify once, reuse across multiple services |
+| Balance refills | Users top up via crypto gateways or other OCN providers |
+
+## Cross-Wallet Transfers
+
+With OCIDs, your users can send and receive funds to/from users on other payment gateways. Both wallets map OCIDs to internal users and process transfers via `/transfer/create`.
+
+### Receiving Transfers
+
+When another gateway sends funds to one of your users:
+
+```javascript
+app.post('/transfer/create', verifyAuth, async (req, res) => {
+  const { from, to, amount, currency, memo } = req.body;
+  const callerOcid = parseInt(req.headers['x-oc-id']);
+
+  // Look up user by their OCID
+  const user = await db.getUserByOcid(to.ocid);
+  if (!user) {
+    return res.status(400).json({
+      error: { code: 'ACCOUNT_NOT_FOUND', message: 'User not found' }
+    });
+  }
+
+  // Verify caller has a reserve account with us
+  const reserve = await db.getReserveAccount(callerOcid);
+  if (!reserve || reserve.balance < parseFloat(amount)) {
+    return res.status(402).json({
+      error: { code: 'INSUFFICIENT_FUNDS', message: 'Reserve balance too low' }
+    });
+  }
+
+  // Debit caller's reserve, credit user
+  await db.debitReserve(callerOcid, amount);
+  await db.creditUser(user.id, amount);
+
+  // Create proof
+  const proof = {
+    txid: generateTxid(),
+    issuer: YOUR_OCID,
+    from: { ocid: from.ocid, reference: from.reference },
+    to: { ocid: to.ocid, reference: user.id },
+    amount,
+    currency,
+    timestamp: Math.floor(Date.now() / 1000),
+    memo
+  };
+
+  const signature = signProof(proof);
+  res.json({ proof, signature });
+});
+```
+
+### Sending Transfers
+
+When your user wants to send to someone on another gateway:
+
+```javascript
+app.post('/app/transfer', authenticateUser, async (req, res) => {
+  const { recipientOcid, amount, memo } = req.body;
+  const user = req.user;
+
+  // Check balance
+  if (user.balance < parseFloat(amount)) {
+    return res.status(402).json({ error: 'Insufficient funds' });
+  }
+
+  // Resolve recipient's gateway
+  const recipientMetadata = await fetchMetadata(recipientOcid);
+  const recipientGateway = recipientMetadata.config.endpoint;
+
+  // Debit user
+  await db.debitUser(user.id, amount);
+
+  // Call recipient gateway's /transfer/create
+  const response = await fetch(`${recipientGateway}/transfer/create`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...createAuthHeaders(YOUR_OCID, YOUR_PRIVATE_KEY)
+    },
+    body: JSON.stringify({
+      from: { ocid: user.ocid, reference: user.id },
+      to: { ocid: recipientOcid },
+      amount,
+      currency: 'USD',
+      memo
+    })
+  });
+
+  const { proof, signature } = await response.json();
+  res.json({ success: true, txid: proof.txid });
+});
+```
+
+### QR Code Scanning for OCID Transfers
+
+Implement QR code scanning to make OCID-to-OCID transfers simple:
+
+```javascript
+// Generate QR code for receiving funds
+app.get('/app/receive-qr', authenticateUser, async (req, res) => {
+  const user = req.user;
+
+  const qrPayload = {
+    type: 'ocid_transfer',
+    ocid: user.ocid,
+    gateway: YOUR_OCID
+  };
+
+  res.json({
+    qrCode: await generateQRCode(JSON.stringify(qrPayload)),
+    ocid: user.ocid
+  });
+});
+
+// Process scanned OCID QR
+app.post('/app/scan-ocid', authenticateUser, async (req, res) => {
+  const { qrContent } = req.body;
+  const qrData = JSON.parse(qrContent);
+
+  if (qrData.type === 'ocid_transfer') {
+    // Fetch recipient info for display
+    const recipientMetadata = await fetchMetadata(qrData.ocid);
+
+    res.json({
+      type: 'transfer',
+      recipientOcid: qrData.ocid,
+      recipientName: recipientMetadata.business?.name || 'User'
+    });
+  }
+});
+```
+
+## Marketplace Payouts
+
+End end users with OCIDs can receive payouts from OCN marketplaces, freelance platforms, or any OCN-connected service.
+
+### Example: Receiving Gig Economy Payouts
+
+A delivery driver using your wallet app can receive earnings from an OCN-connected delivery platform:
+
+```javascript
+// The marketplace calls your /transfer/create endpoint
+// Your gateway receives the payout for the user
+
+app.post('/transfer/create', verifyAuth, async (req, res) => {
+  const { from, to, amount, currency, memo } = req.body;
+  const marketplaceOcid = parseInt(req.headers['x-oc-id']);
+
+  // Verify this is a known marketplace with a reserve account
+  const reserve = await db.getReserveAccount(marketplaceOcid);
+  if (!reserve) {
+    return res.status(403).json({
+      error: { code: 'UNAUTHORIZED', message: 'Unknown sender' }
+    });
+  }
+
+  // Find user by OCID
+  const user = await db.getUserByOcid(to.ocid);
+  if (!user) {
+    return res.status(400).json({
+      error: { code: 'ACCOUNT_NOT_FOUND', message: 'User not found' }
+    });
+  }
+
+  // Process payout
+  await db.debitReserve(marketplaceOcid, amount);
+  await db.creditUser(user.id, amount);
+
+  // Create proof
+  const proof = {
+    txid: generateTxid(),
+    issuer: YOUR_OCID,
+    from: { ocid: from.ocid, reference: from.reference },
+    to: { ocid: to.ocid, reference: user.id },
+    amount,
+    currency,
+    timestamp: Math.floor(Date.now() / 1000),
+    memo: memo || 'Marketplace payout'
+  };
+
+  const signature = signProof(proof);
+
+  // Notify user of incoming payout
+  await pushNotification(user.id, {
+    type: 'payout_received',
+    amount,
+    currency,
+    from: marketplaceOcid,
+    memo
+  });
+
+  res.json({ proof, signature });
+});
+```
+
+### User Experience
+
+Display marketplace payouts in your app's transaction history:
+
+```javascript
+app.get('/app/transactions', authenticateUser, async (req, res) => {
+  const transactions = await db.getUserTransactions(req.user.id);
+
+  const enriched = await Promise.all(transactions.map(async (tx) => {
+    // Fetch sender metadata for display
+    const senderMetadata = await fetchMetadata(tx.fromOcid);
+
+    return {
+      ...tx,
+      senderName: senderMetadata.business?.name || 'Unknown',
+      senderLogo: senderMetadata.business?.logo,
+      type: tx.memo?.includes('payout') ? 'payout' : 'transfer'
+    };
+  }));
+
+  res.json({ transactions: enriched });
+});
+```
+
+## KYC via OCN Provider
+
+Users can complete KYC verification once with an OCN KYC provider and share it across multiple services, saving time for both users and payment gateways.
+
+### Requesting KYC from a Provider
+
+Redirect users to the KYC provider's grant URL where they can complete verification and authorize sharing their data with your gateway.
+
+```javascript
+app.get('/app/kyc/start', authenticateUser, async (req, res) => {
+  const user = req.user;
+
+  // Check if user already has valid KYC
+  if (user.kycStatus === 'verified') {
+    return res.json({ status: 'already_verified' });
+  }
+
+  // Get KYC provider metadata
+  const kycProviderOcid = 500; // Your configured KYC provider
+  const provider = await fetchMetadata(kycProviderOcid);
+
+  // Generate state for CSRF protection
+  const state = crypto.randomBytes(16).toString('hex');
+  await db.createKycSession({
+    state,
+    userId: user.id,
+    providerOcid: kycProviderOcid,
+    status: 'pending'
+  });
+
+  // Build grant URL - user will be redirected here
+  const grantUrl = new URL(`${provider.config.endpoint}/kyc/grant/${YOUR_OCID}`);
+  grantUrl.searchParams.set('grants', 'name,email,phone,id_card,liveness');
+  grantUrl.searchParams.set('user_ocid', user.ocid);
+  grantUrl.searchParams.set('callback_url', `${YOUR_APP_URL}/kyc/callback`);
+  grantUrl.searchParams.set('state', state);
+
+  res.json({
+    verification_url: grantUrl.toString(),
+    message: 'Complete verification with our KYC partner'
+  });
+});
+```
+
+### Handling KYC Callback
+
+After the user grants (or denies) access, the KYC provider redirects them back to your callback URL:
+
+```javascript
+app.get('/kyc/callback', async (req, res) => {
+  const { state, status, user_ocid } = req.query;
+
+  // Verify state to prevent CSRF
+  const session = await db.getKycSessionByState(state);
+  if (!session) {
+    return res.redirect('/app/kyc?error=invalid_state');
+  }
+
+  if (status === 'granted') {
+    // User granted access - validate their KYC
+    const provider = await fetchMetadata(session.providerOcid);
+
+    const response = await fetch(`${provider.config.endpoint}/kyc/validate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...createAuthHeaders(YOUR_OCID, YOUR_PRIVATE_KEY)
+      },
+      body: JSON.stringify({
+        user_ocid: parseInt(user_ocid),
+        grants: ['name', 'email', 'phone', 'id_card', 'liveness']
+      })
+    });
+
+    const validation = await response.json();
+
+    if (validation.kyc_complete) {
+      await db.updateUser(session.userId, {
+        kycStatus: 'verified',
+        kycGrants: validation.grants,
+        kycExpiresAt: validation.expires_at,
+        kycProviderOcid: session.providerOcid
+      });
+
+      // Unlock higher transaction limits
+      await updateUserLimits(session.userId, validation.grants);
+    }
+
+    await db.updateKycSession(session.state, { status: 'granted' });
+    res.redirect('/app/kyc?success=true');
+  } else {
+    // User denied access
+    await db.updateKycSession(session.state, { status: 'denied' });
+    res.redirect('/app/kyc?error=denied');
+  }
+});
+```
+
+### Validating Existing KYC
+
+Check if a user has already completed KYC with a provider and granted you access:
+
+```javascript
+app.post('/app/kyc/check', authenticateUser, async (req, res) => {
+  const { kycProviderOcid } = req.body;
+  const user = req.user;
+
+  const provider = await fetchMetadata(kycProviderOcid);
+
+  // Check KYC status and what grants are available
+  const response = await fetch(`${provider.config.endpoint}/kyc/validate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...createAuthHeaders(YOUR_OCID, YOUR_PRIVATE_KEY)
+    },
+    body: JSON.stringify({
+      user_ocid: user.ocid,
+      grants: ['name', 'email', 'phone', 'id_card', 'liveness']
+    })
+  });
+
+  const { kyc_complete, grants, verified_at, expires_at } = await response.json();
+
+  if (kyc_complete && grants.name === 'verified') {
+    await db.updateUser(user.id, {
+      kycStatus: 'verified',
+      kycGrants: grants,
+      kycExpiresAt: expires_at,
+      kycProviderOcid
+    });
+
+    res.json({ success: true, grants });
+  } else {
+    res.json({ success: false, grants, message: 'KYC incomplete or not authorized' });
+  }
+});
+```
+
+### Fetching KYC Data
+
+Once the user has granted access, retrieve their verified KYC data:
+
+```javascript
+app.get('/app/kyc/data', authenticateUser, async (req, res) => {
+  const user = req.user;
+
+  if (!user.kycProviderOcid) {
+    return res.status(400).json({ error: 'No KYC provider linked' });
+  }
+
+  const provider = await fetchMetadata(user.kycProviderOcid);
+
+  const response = await fetch(`${provider.config.endpoint}/kyc/data`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...createAuthHeaders(YOUR_OCID, YOUR_PRIVATE_KEY)
+    },
+    body: JSON.stringify({
+      user_ocid: user.ocid,
+      grants: ['name', 'email', 'phone']
+    })
+  });
+
+  const { data, issued_at, expires_at, signature } = await response.json();
+
+  // Verify the signature using the provider's public key
+  if (!verifySignature(data, signature, provider.config.publicKey)) {
+    return res.status(400).json({ error: 'Invalid KYC data signature' });
+  }
+
+  res.json({
+    name: data.name?.full_name,
+    email: data.email,
+    phone: data.phone,
+    verified: true
+  });
+});
+```
+## Balance Refills via OCN
+
+Allow users to top up their balance through other OCN gateways, such as crypto on-ramps or bank transfer services.
+
+### Example: Crypto Top-Up
+
+A user wants to add funds using cryptocurrency through an OCN crypto gateway. Your gateway acts as the "merchant" receiving the payment:
+
+```javascript
+app.post('/app/topup/crypto', authenticateUser, async (req, res) => {
+  const { amount, currency } = req.body;
+  const user = req.user;
+
+  // Get crypto gateway metadata
+  const cryptoGatewayOcid = 600; // Configured crypto on-ramp
+  const gateway = await fetchMetadata(cryptoGatewayOcid);
+
+  // Create a top-up order (your gateway is the "merchant")
+  const order = {
+    id: `topup_${crypto.randomUUID()}`,
+    ocid: YOUR_OCID,
+    reference: user.ocid.toString(),
+    amount,
+    currency,
+    memo: `Balance top-up for user ${user.ocid}`,
+    createdAt: Math.floor(Date.now() / 1000),
+    expiresAt: Math.floor(Date.now() / 1000) + 30 * 60,
+    accepts: [cryptoGatewayOcid]
+  };
+
+  const orderSignature = signOrder(order);
+
+  // Call crypto gateway's /checkout/create
+  const response = await fetch(`${gateway.config.endpoint}/checkout/create`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...createAuthHeaders(YOUR_OCID, YOUR_PRIVATE_KEY)
+    },
+    body: JSON.stringify({
+      order,
+      signature: orderSignature,
+      merchantOcid: YOUR_OCID,
+      urls: {
+        success: `${YOUR_APP_URL}/topup/success?order=${order.id}`,
+        cancel: `${YOUR_APP_URL}/topup/cancel`
+      }
+    })
+  });
+
+  const { checkout_url, session_id, expires_at } = await response.json();
+
+  // Store pending top-up
+  await db.createTopupSession({
+    orderId: order.id,
+    userId: user.id,
+    sessionId: session_id,
+    providerOcid: cryptoGatewayOcid,
+    amount,
+    currency,
+    status: 'pending'
+  });
+
+  res.json({ checkout_url });
+});
+```
+
+### Receiving Top-Up Funds
+
+After the user pays with crypto, the crypto gateway sends a proof to your `/transfer/webhook`:
+[see docs]('/merchant-gateway-api/endpoint/transfer-webhook')
+
+```javascript
+app.post('/transfer/webhook', verifyAuth, async (req, res) => {
+  const { proof, signature } = req.body;
+  const senderOcid = parseInt(req.headers['x-oc-id']);
+
+  // Verify proof signature using sender's public key
+  const sender = await fetchMetadata(senderOcid);
+  if (!verifySignature(proof, signature, sender.config.publicKey)) {
+    return res.status(400).json({
+      error: { code: 'INVALID_SIGNATURE', message: 'Proof signature invalid' }
+    });
+  }
+
+  // Verify we are the recipient
+  if (proof.to.ocid !== YOUR_OCID) {
+    return res.status(400).json({
+      error: { code: 'INVALID_PROOF', message: 'Not addressed to us' }
+    });
+  }
+
+  // Find the pending top-up by reference (user's OCID)
+  const userOcid = parseInt(proof.to.reference);
+  const user = await db.getUserByOcid(userOcid);
+  if (!user) {
+    return res.status(400).json({
+      error: { code: 'ACCOUNT_NOT_FOUND', message: 'User not found' }
+    });
+  }
+
+  // Credit user's balance
+  await db.creditUser(user.id, proof.amount);
+
+  // Update top-up session status
+  await db.updateTopupByReference(proof.to.reference, {
+    status: 'completed',
+    txid: proof.txid
+  });
+
+  // Notify user
+  await pushNotification(user.id, {
+    type: 'topup_complete',
+    amount: proof.amount,
+    currency: proof.currency,
+    source: 'crypto'
+  });
+
+  res.json({ status: 'accepted', txid: proof.txid });
+});
+```
+
+### Offering Multiple Top-Up Options
+
+Present users with available refill methods:
+
+```javascript
+app.get('/app/topup/options', authenticateUser, async (req, res) => {
+  // Fetch available top-up providers
+  const providers = [
+    { ocid: 600, type: 'crypto', name: 'Crypto Top-Up', currencies: ['BTC', 'ETH', 'USDC'] },
+    { ocid: 601, type: 'bank', name: 'Bank Transfer', currencies: ['USD', 'EUR'] },
+    { ocid: 602, type: 'card', name: 'Debit Card', currencies: ['USD'] }
+  ];
+
+  const available = await Promise.all(providers.map(async (p) => {
+    const metadata = await fetchMetadata(p.ocid);
+    return {
+      ...p,
+      logo: metadata.business?.logo,
+      fees: metadata.config?.fees
+    };
+  }));
+
+  res.json({ options: available });
+});
+```
+
+## Related
+
+- [KYC Provider API](/kyc-provider-api/introduction) - How KYC providers integrate with OCN
+- [Create Transfer](/payment-gateway-api/endpoint/transfer-create) - Transfer endpoint implementation
+- [Settlement Guide](/payment-gateway-api/settlement) - How to settle payments with merchants

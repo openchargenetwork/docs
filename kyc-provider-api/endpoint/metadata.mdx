@@ -1,0 +1,69 @@
+---
+title: "Get Metadata"
+description: "Return your KYC provider's public metadata for service discovery"
+openapi: "kyc-provider-api/openapi.json GET /metadata.json"
+---
+
+<Info>
+This endpoint is public and does not require authentication. Other services fetch this to discover your capabilities and verify your signatures.
+</Info>
+
+## Implementation
+
+Host this endpoint at the URL you register in the Router Registry. The response tells other services:
+
+- **Your public key** - Used to verify your signed KYC data
+- **Your endpoint URL** - Where to send API requests
+- **Your capabilities** - Which KYC endpoints you support
+
+## Example Response
+
+```json
+{
+  "opencharge": "0.1",
+  "name": "TrustVerify KYC",
+  "profile": "Global KYC verification provider",
+  "icon": "https://kyc.provider.example/icon.png",
+  "config": {
+    "publicKey": "a34b5c6d7e8f9a0b...",
+    "endpoint": "https://kyc.provider.example/opencharge",
+    "capabilities": [
+      "kyc.grant",
+      "kyc.validate",
+      "kyc.data"
+    ]
+  },
+  "kyc": [],
+  "signature": "a1b2c3d4e5f6...7f1b",
+  "contact": "support@kycprovider.example"
+}
+```
+
+## Key Fields
+
+| Field | Purpose |
+|-------|---------|
+| `profile` | Description of your KYC service |
+| `config.publicKey` | Your secp256k1 public key (128 hex chars) |
+| `config.endpoint` | Base URL for your Opencharge API |
+| `config.capabilities` | List of supported KYC operations |
+| `signature` | Your signature of the canonicalized config |
+
+## Signing Your Config
+
+Sign the `config` object to prove you control the private key:
+
+```javascript
+const config = {
+  publicKey: YOUR_PUBLIC_KEY,
+  endpoint: "https://kyc.provider.example/opencharge",
+  capabilities: [
+    "kyc.grant",
+    "kyc.validate",
+    "kyc.data"
+  ]
+};
+
+const canonical = JSON.stringify(config, Object.keys(config).sort());
+const signature = secp256k1_sign(YOUR_PRIVATE_KEY, SHA256(canonical));
+```

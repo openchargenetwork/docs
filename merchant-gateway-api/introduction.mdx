@@ -49,38 +49,21 @@ https://pay.yourgateway.com/opencharge
 
 The Merchant Gateway sits between merchants and Payment Gateways. When a merchant receives an order, you route it to a Payment Gateway that handles the actual payment UI.
 
-```
-┌──────────┐   ┌──────────┐   ┌─────────────────┐   ┌─────────────────┐
-│ Customer │   │ Merchant │   │ Merchant Gateway│   │ Payment Gateway │
-└────┬─────┘   └────┬─────┘   └───────┬─────────┘   └───────┬─────────┘
-     │              │                 │                     │
-     │ 1. Checkout  │                 │                     │
-     │─────────────>│                 │                     │
-     │              │                 │                     │
-     │              │ 2. POST /orders/│                     │
-     │              │    checkout     │                     │
-     │              │────────────────>│                     │
-     │              │                 │                     │
-     │              │ 3. redirect_url │                     │
-     │              │    (to Payment  │                     │
-     │              │     Gateway)    │                     │
-     │              │<────────────────│                     │
-     │              │                 │                     │
-     │ 4. Redirect to Payment Gateway │                     │
-     │<─────────────│                 │                     │
-     │              │                 │                     │
-     │ 5. Pay on Payment Gateway's checkout page            │
-     │─────────────────────────────────────────────────────>│
-     │              │                 │                     │
-     │              │                 │ 6. Webhook (proof)  │
-     │              │                 │<────────────────────│
-     │              │                 │                     │
-     │              │ 7. Webhook      │                     │
-     │              │    (proof)      │                     │
-     │              │<────────────────│                     │
-     │              │                 │                     │
-     │ 8. Redirect back               │                     │
-     │<─────────────────────────────────────────────────────│
+```mermaid
+sequenceDiagram
+    participant Customer
+    participant Merchant
+    participant MG as Merchant Gateway
+    participant PG as Payment Gateway
+
+    Customer->>Merchant: 1. Checkout
+    Merchant->>MG: 2. POST /orders/checkout
+    MG-->>Merchant: 3. redirect_url (to Payment Gateway)
+    Merchant-->>Customer: 4. Redirect to Payment Gateway
+    Customer->>PG: 5. Pay on Payment Gateway's checkout page
+    PG->>MG: 6. Webhook (proof)
+    MG->>Merchant: 7. Webhook (proof)
+    PG-->>Customer: 8. Redirect back
 ```
 
 ## Authentication

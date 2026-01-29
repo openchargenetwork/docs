@@ -19,23 +19,15 @@ The `/orders/create` endpoint supports three integration patterns depending on w
 
 Used for inventory-based payments such as vending machines, mobile top-up, or any scenario where the merchant controls the product catalog.
 
-```
-┌──────────────┐                      ┌──────────────┐
-│  Payment App │                      │   Merchant   │
-│   (Wallet)   │                      │  (Vending)   │
-└──────┬───────┘                      └──────┬───────┘
-       │                                     │
-       │  1. POST /orders/create             │
-       │     (order details)                 │
-       │────────────────────────────────────>│
-       │                                     │
-       │  2. Merchant signs order            │
-       │                                     │
-       │  3. Returns signed order + URLs     │
-       │<────────────────────────────────────│
-       │                                     │
-       │  4. Payment app processes payment   │
-       │                                     │
+```mermaid
+sequenceDiagram
+    participant PA as Payment App (Wallet)
+    participant M as Merchant (Vending)
+
+    PA->>M: 1. POST /orders/create (order details)
+    Note over M: 2. Merchant signs order
+    M-->>PA: 3. Returns signed order + URLs
+    Note over PA: 4. Payment app processes payment
 ```
 
 1. **User selects items** from the merchant's inventory
@@ -68,34 +60,19 @@ Used for inventory-based payments such as vending machines, mobile top-up, or an
 
 Used when the gateway has the user's wallet information and the merchant initiates payment by scanning the user's QR code.
 
-```
-┌──────────────┐     ┌──────────────────┐     ┌──────────────┐
-│     User     │     │ Payment Gateway  │     │   Merchant   │
-│   (Wallet)   │     │   (Processes)    │     │    (POS)     │
-└──────┬───────┘     └────────┬─────────┘     └──────┬───────┘
-       │                      │                      │
-       │  1. Open wallet app  │                      │
-       │─────────────────────>│                      │
-       │                      │                      │
-       │  2. Generate session │                      │
-       │     Display QR code  │                      │
-       │<─────────────────────│                      │
-       │                      │                      │
-       │                      │  3. Scan QR code     │
-       │                      │<─────────────────────│
-       │                      │                      │
-       │                      │  4. POST /orders/    │
-       │                      │     create/{session} │
-       │                      │     (signed order)   │
-       │                      │<─────────────────────│
-       │                      │                      │
-       │  5. Debit user       │  6. Return status    │
-       │<─────────────────────│     URL              │
-       │                      │─────────────────────>│
-       │                      │                      │
-       │                      │  7. POST transfer/   │
-       │                      │     webhook (proof)  │
-       │                      │─────────────────────>│
+```mermaid
+sequenceDiagram
+    participant U as User (Wallet)
+    participant PG as Payment Gateway (Processes)
+    participant M as Merchant (POS)
+
+    U->>PG: 1. Open wallet app
+    PG-->>U: 2. Generate session, Display QR code
+    M->>PG: 3. Scan QR code
+    M->>PG: 4. POST /orders/create/{session} (signed order)
+    PG-->>U: 5. Debit user
+    PG-->>M: 6. Return status URL
+    PG->>M: 7. POST transfer/webhook (proof)
 ```
 
 1. **User opens** their payment gateway app (wallet)
@@ -149,39 +126,19 @@ The `sessionId` is a temporary identifier that:
 
 Used for web-based checkout where the merchant redirects users to a hosted payment page.
 
-```
-┌──────────────┐     ┌──────────────┐     ┌──────────────────┐
-│     User     │     │   Merchant   │     │ Merchant Gateway │
-│  (Browser)   │     │  (Backend)   │     │  (Payment Page)  │
-└──────┬───────┘     └──────┬───────┘     └────────┬─────────┘
-       │                    │                      │
-       │  1. Checkout       │                      │
-       │───────────────────>│                      │
-       │                    │                      │
-       │                    │  2. POST /orders/    │
-       │                    │     create           │
-       │                    │     (signed order)   │
-       │                    │─────────────────────>│
-       │                    │                      │
-       │                    │  3. Return           │
-       │                    │     redirect_url     │
-       │                    │<─────────────────────│
-       │                    │                      │
-       │  4. Redirect to    │                      │
-       │     payment page   │                      │
-       │<───────────────────│                      │
-       │                    │                      │
-       │  5. User completes │                      │
-       │     payment        │                      │
-       │───────────────────────────────────────────>│
-       │                    │                      │
-       │                    │  6. Webhook with     │
-       │                    │     payment proof    │
-       │                    │<─────────────────────│
-       │                    │                      │
-       │  7. Redirect back  │                      │
-       │     to merchant    │                      │
-       │<──────────────────────────────────────────│
+```mermaid
+sequenceDiagram
+    participant U as User (Browser)
+    participant M as Merchant (Backend)
+    participant MG as Merchant Gateway (Payment Page)
+
+    U->>M: 1. Checkout
+    M->>MG: 2. POST /orders/create (signed order)
+    MG-->>M: 3. Return redirect_url
+    M-->>U: 4. Redirect to payment page
+    U->>MG: 5. User completes payment
+    MG->>M: 6. Webhook with payment proof
+    MG-->>U: 7. Redirect back to merchant
 ```
 
 1. **User initiates checkout** on the merchant's website

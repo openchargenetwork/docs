@@ -1,0 +1,65 @@
+---
+title: "Get Capabilities"
+description: "Return partner-specific capabilities for authenticated callers"
+openapi: "kyc-provider-api/openapi.json GET /capabilities"
+---
+
+<Info>
+Unlike `/metadata.json`, this endpoint is authenticated. Return capabilities specific to the requesting partner.
+</Info>
+
+## Implementation
+
+```javascript
+app.get('/capabilities', verifyAuth, async (req, res) => {
+  const partnerOcid = req.headers['x-oc-id'];
+
+  // Get partner-specific settings
+  const partner = await db.getPartner(partnerOcid);
+
+  if (!partner) {
+    return res.status(401).json({
+      error: { code: 'UNKNOWN_OCID', message: 'Unknown partner' }
+    });
+  }
+
+  res.json({
+    ocid: YOUR_OCID,
+    name: "TrustVerify KYC",
+    capabilities: ["kyc.grant", "kyc.validate", "kyc.data"],
+    supported_grants: [
+      "name",
+      "email",
+      "phone",
+      "date_of_birth",
+      "nationality",
+      "address",
+      "id_card",
+      "passport",
+      "driver_license",
+      "proof_of_address",
+      "liveness",
+      "aml"
+    ]
+  });
+});
+```
+
+## Supported Grants
+
+The `supported_grants` array tells partners which KYC data types you can provide:
+
+| Grant | Description |
+|-------|-------------|
+| `name` | Full legal name |
+| `email` | Verified email address |
+| `phone` | Verified phone number |
+| `date_of_birth` | Date of birth |
+| `nationality` | Country of citizenship |
+| `address` | Physical address |
+| `id_card` | Government-issued ID card |
+| `passport` | Passport document |
+| `driver_license` | Driver's license |
+| `proof_of_address` | Utility bill, bank statement |
+| `liveness` | Selfie/liveness check |
+| `aml` | AML screening result |

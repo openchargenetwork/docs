@@ -1,0 +1,139 @@
+---
+title: "Grant KYC Access"
+description: "UI endpoint for users to grant KYC data access to an OCID. Its recommended to onboard third party OCIDs who need KYC access from your users. [see how merchant gateways onboard merchants](/merchant-gateway-api/merchant-onboarding)"
+openapi: "kyc-provider-api/openapi.json GET /kyc/grant/{ocid}"
+---
+
+<Info>
+This is a redirect endpoint, not a JSON API. Gateways redirect users here to request KYC permissions.
+</Info>
+
+## Flow
+
+1. Gateway redirects user to your `/kyc/grant/{ocid}` URL with query parameters
+2. You display a consent UI showing which permissions are requested
+3. User reviews and grants/denies each permission
+4. You redirect user back to the `callback_url` with the result
+
+## URL Parameters
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `ocid` | Yes | The OCID requesting KYC access (path parameter) |
+| `grants` | Yes | Comma-separated permissions requested |
+| `user_ocid` | Yes | The end user's OCID |
+| `callback_url` | Yes | Where to redirect after user decision |
+| `state` | No | Opaque value returned in callback |
+
+## Example Request URL
+
+```
+https://kyc.provider.example/opencharge/kyc/grant/300
+  ?grants=name,email,phone,id_card,liveness
+  &user_ocid=12345
+  &callback_url=https://gateway.example/kyc/callback
+  &state=session_abc123
+```
+
+## Consent UI Requirements
+
+Your consent UI must:
+
+- Clearly show which OCID is requesting access (fetch their metadata to display name/icon)
+- List each requested permission with a clear description
+- Allow users to grant or deny individual permissions
+- Show what data will be shared for each permission
+- Require explicit user action (no auto-approve)
+
+## Callback Response
+
+After the user makes their decision, redirect to the `callback_url` with query parameters:
+
+### Successful Grant
+
+```
+https://gateway.example/kyc/callback
+  ?status=granted
+  &grants=name,email,phone,id_card,liveness
+  &user_ocid=12345
+  &state=session_abc123
+```
+
+### Partial Grant
+
+```
+https://gateway.example/kyc/callback
+  ?status=partial
+  &grants=name,email,phone
+  &denied=id_card,liveness
+  &user_ocid=12345
+  &state=session_abc123
+```
+
+### Denied
+
+```
+https://gateway.example/kyc/callback
+  ?status=denied
+  &user_ocid=12345
+  &state=session_abc123
+```
+
+## Implementation
+
+```javascript
+app.get('/kyc/grant/:ocid', async (req, res) => {
+  const requestingOcid = req.params.ocid;
+  const { grants, user_ocid, callback_url, state } = req.query;
+
+  // Validate callback URL (must be HTTPS, no localhost in production)
+  if (!isValidCallbackUrl(callback_url)) {
+    return res.status(400).json({
+      error: { code: 'INVALID_CALLBACK_URL', message: 'Invalid callback URL' }
+    });
+  }
+
+  // Fetch requesting OCID's metadata to display in consent UI
+  const requester = await fetchOcidMetadata(requestingOcid);
+
+  // Render consent page
+  res.render('kyc-consent', {
+    requester,
+    grants: grants.split(','),
+    user_ocid,
+    callback_url,
+    state
+  });
+});
+
+app.post('/kyc/grant/:ocid/submit', async (req, res) => {
+  const { user_ocid, callback_url, state, granted_permissions, denied_permissions } = req.body;
+
+  // Store the grant in database
+  await db.storeKycGrant({
+    user_ocid,
+    requesting_ocid: req.params.ocid,
+    granted: granted_permissions,
+    denied: denied_permissions,
+    granted_at: Date.now()
+  });
+
+  // Build callback URL
+  const url = new URL(callback_url);
+  url.searchParams.set('user_ocid', user_ocid);
+  if (state) url.searchParams.set('state', state);
+
+  if (denied_permissions.length === 0) {
+    url.searchParams.set('status', 'granted');
+    url.searchParams.set('grants', granted_permissions.join(','));
+  } else if (granted_permissions.length === 0) {
+    url.searchParams.set('status', 'denied');
+  } else {
+    url.searchParams.set('status', 'partial');
+    url.searchParams.set('grants', granted_permissions.join(','));
+    url.searchParams.set('denied', denied_permissions.join(','));
+  }
+
+  res.redirect(url.toString());
+});
+```

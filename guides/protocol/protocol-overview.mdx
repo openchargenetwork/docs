@@ -49,16 +49,10 @@ Every completed transfer produces a **signed transaction proof**. This proof:
 
 Services explicitly declare which other services they trust for settlement. This creates a directed graph of trust relationships:
 
-```
-                    ┌─────────────┐
-         accepts    │   Barclays  │    accepts
-       ┌───────────►│  (OCID 100) │◄───────────┐
-       │            └─────────────┘            │
-       │                                       │
-┌──────┴──────┐                         ┌──────┴──────┐
-│  MTN MOMO   │                         │   Stanbic   │
-│  (OCID 300) │                         │  (OCID 101) │
-└─────────────┘                         └─────────────┘
+```mermaid
+flowchart BT
+    MTN["MTN MOMO<br/>(OCID 300)"] -->|accepts| Barclays["Barclays<br/>(OCID 100)"]
+    Stanbic["Stanbic<br/>(OCID 101)"] -->|accepts| Barclays
 ```
 
 **Important**: Accepting settlement from an OCID implies you already have a working relationship with that entity. The protocol only facilitates verification, not trust establishment.

@@ -31,7 +31,7 @@
                 "example": {
                   "opencharge": "0.1",
                   "name": "PayFlow Gateway",
-                  "description": "Hosted checkout for online merchants",
+                  "profile": "Hosted checkout for online merchants",
                   "icon": "https://pay.gateway.example/icon.png",
                   "config": {
                     "publicKey": "a34b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b",
@@ -49,6 +49,7 @@
                       "accepts": [100, 101, 102]
                     }
                   },
+                  "kyc": [540, 737, 2836],
                   "signature": "a1b2c3d4e5f6...7f1b",
                   "contact": "integrations@gateway.example"
                 }
@@ -642,9 +643,9 @@
             "description": "Human-readable gateway name",
             "example": "PayFlow Gateway"
           },
-          "description": {
+          "profile": {
             "type": "string",
-            "description": "Gateway description"
+            "description": "Gateway profile description"
           },
           "icon": {
             "type": "string",
@@ -653,6 +654,13 @@
           },
           "config": {
             "$ref": "#/components/schemas/OCIDConfig"
+          },
+          "kyc": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "Supported auto KYC providers that service accepts"
           },
           "signature": {
             "type": "string",
