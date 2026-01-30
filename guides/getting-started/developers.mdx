@@ -1,5 +1,5 @@
 ---
-title: "Developers"
+title: "Service Definitions"
 description: "Resources for building with Opencharge"
 ---
 
@@ -10,38 +10,32 @@ Before integrating with OpenCharge, identify which role(s) apply to your service
 ### Merchants
 
 **You are a Merchant if:** You sell goods or services and need to accept payments.
+e.g e-commerce stores, restaurants, retail POS, Vending machines, etc.
+[Api Docs](/merchant-api/introduction)
 
-Examples:  e-commerce stores, restaurants, retail POS, Vending machines, mobile top-up kiosks etc.
 
-### Gateway Services
-
-Gateways are services that facilitate payments between merchants and users. There are two types of gateway services. You can implement one or both, but they require separate API implementation on the OpenCharge network.
-
-<CardGroup cols={2}>
-  <Card title="Merchant Gateway" icon="building-columns">
-    You onboard merchants who need to collect payments. You receive orders from merchants and route them to Payment Gateways for collection.
-
-    Examples: Payment processors, merchant acquirers, PSPs.
-  </Card>
-
-  <Card title="Payment Gateway" icon="wallet">
-    You onboard end users and help them complete payments at merchants. This includes hosted checkout pages where users select payment methods.
-
-    Examples: Mobile money providers, digital wallets, banking apps, hosted checkout pages.
-  </Card>
-</CardGroup>
 
 #### Merchant Gateway
 
-**You are a Merchant Gateway if:** You provide payment services to merchants - they integrate with your API to accept payments. You handle merchant onboarding, order routing, and settlement processing.
+**You are a Merchant Gateway if:** You provide a payment collection services to merchants - they integrate with your API to collect payments. You handle merchant onboarding, order routing, and settlement processing.
+[Api Docs](/merchant-gateway-api/introduction)
 
 #### Payment Gateway
 
-**You are a Payment Gateway if:** You provide payment services to end users - they use your app or checkout page to pay at merchants. This includes hosted checkout pages where end users complete payments.
+**You are a Payment Gateway if:** You provide wallet and payment services to end users - they use your web or mobile app to pay for goods and services. This could includes hosted checkout pages where end users complete payments.
+[Api Docs](/payment-gateway-api/introduction) -> [End Users](/payment-gateway-api/end-user-ocids#why-onboard-end-users-with-ocids)
+
+#### KYC Provider
+
+**You are a KYC Provider if:** You provide kyc onboarding services to end users - they use your web or mobile app verify kyc.  Merchants, Gateways use your API to retrieve KYC data for their services.
+[Api Docs](/kyc-provider-api/introduction)
+
+#### Payment Broker/Router
+
+**You are a Payment Broker if:** you provide settlement services. The best example is VISA. You accept payments from one gateway and make payments via another. You on-board payment and Merchant gateways services.
+
 
 ## Resources
-
-- [API Reference](/merchant-api/introduction) - Complete API documentation and endpoint reference
 - [Merchant Orders Guide](/guides/protocol/merchant-orders) - Detailed flow diagrams for order creation patterns
 - [Protocol Overview](/guides/protocol/protocol-overview) - How OpenCharge works
 - [Github Repos](https://github.com/openchargenetwork) - Download and contribute to OpenCharge code

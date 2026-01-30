@@ -55,13 +55,13 @@ app.post('/checkout/create', signatureAuth, async (req, res) => {
 
 When the user completes payment on your checkout page:
 
-1. Settle with the merchant (see [Settlement Guide](/payment-gateway-api/settlement))
+1. Credit the merchant gateway account.
 2. Redirect the user to the `urls.success` URL
 
 ```javascript
 async function completeCheckout(session, user) {
-  // Settle the payment - see Settlement Guide for details
-  const proof = await settlePayment(user, session.order, session.merchantOcid);
+  // Generate transfer proof for the merchant gateway
+  const proof = await generateProof(user, session.order, session.merchantOcid);
 
   // Update session
   await db.updateCheckoutSession(session.id, {
